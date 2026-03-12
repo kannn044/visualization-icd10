@@ -64,7 +64,7 @@ export default function App() {
 
   useEffect(() => {
     const fetchCSV = async () => {
-      const addressRes = await fetch('/address.csv');
+      const addressRes = await fetch('./address.csv');
       const addressText = await addressRes.text();
       const addressResult = Papa.parse(addressText, { header: true, dynamicTyping: true, skipEmptyLines: true });
       const addressMap = new Map();
@@ -75,7 +75,7 @@ export default function App() {
         }
       });
 
-      const episodeRes = await fetch('/episode_details_10mar2026.csv');
+      const episodeRes = await fetch('./episode_details_10mar2026.csv');
       const episodeText = await episodeRes.text();
       const episodeResult = Papa.parse(episodeText, { header: true, dynamicTyping: true, skipEmptyLines: true });
       
