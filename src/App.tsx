@@ -546,7 +546,7 @@ export default function App() {
             <p style={{ margin: 0 }}>
               <strong style={{ color: '#7c3aed' }}>Intersection (2∩3)</strong> —
               นับเฉพาะผู้ป่วยที่ตรง<strong>ทั้งสองเงื่อนไขพร้อมกัน</strong>
-              (visit ≥ 2 ครั้ง <em>และ</em> ได้รับยา)
+              (visit ≥ 1 ครั้ง <em>และ</em> ได้รับยา)
               กลุ่มนี้มีแนวโน้มสูงว่าได้รับการวินิจฉัยและเริ่มรักษาจริงในทางคลินิก
             </p>
           </div>
