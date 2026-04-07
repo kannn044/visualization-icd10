@@ -318,10 +318,10 @@ export default function App() {
     // Age
     const ageStats: any = {};
     const ageSeen = new Set<string>();
-    AGE_LABELS.forEach(l => ageStats[l] = { male: 0, female: 0, total: 0 });
+    AGE_LABELS_5Y.forEach(l => ageStats[l] = { male: 0, female: 0, total: 0 });
     data.forEach(d => {
       if (!ageSeen.has(d.id)) {
-        const bin = getAgeBin(d.age_at_episode_start);
+        const bin = getAgeBin5Y(d.age_at_episode_start);
         if (d.gender === 'male') ageStats[bin].male++;
         else if (d.gender === 'female') ageStats[bin].female++;
         ageStats[bin].total++;
@@ -363,7 +363,7 @@ export default function App() {
         { name: 'male', value: genderCounts.male },
         { name: 'female', value: genderCounts.female }
       ],
-      age: AGE_LABELS.map(name => ({ name, ...ageStats[name] })),
+      age: AGE_LABELS_5Y.map(name => ({ name, ...ageStats[name] })),
       zone: Object.entries(zoneStats).map(([name, val]: any) => ({ name, ...val })).sort((a,b) => parseInt(a.name) - parseInt(b.name)),
       province: Object.entries(provStats).map(([name, val]: any) => ({ name, ...val })).sort((a,b) => b.total - a.total).slice(0, 10)
     };
