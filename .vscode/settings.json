@@ -1,0 +1,46 @@
+{
+    "chat.tools.terminal.autoApprove": {
+        "/^python3 -c \"\nimport csv\nwith open\\('/Users/gunkhemnak/Gun/python/a31/visualization-icd10/public/pop2566\\.csv', encoding='utf-8-sig'\\) as f:\n    rows = list\\(csv\\.reader\\(f\\)\\)\nprint\\('Row 1 full:', rows\\[1\\]\\)\nprint\\('Row 3 \\(national\\):', rows\\[3\\]\\[:10\\]\\)\nprint\\('Row 3 national name:', rows\\[3\\]\\[1\\]\\)\n# find the national total row\nfor i, r in enumerate\\(rows\\):\n    if 'รวมทั้งประเทศ' in str\\(r\\):\n        print\\(f'National row index: \\{i\\}'\\)\n        print\\('Data:', r\\[:52\\]\\)\n        break\n\"\n$/": {
+            "approve": true,
+            "matchCommandLine": true
+        },
+        "/^python3 -c \"\nimport csv\nfor year in \\[2553, 2557, 2560\\]:\n    with open\\(f'/Users/gunkhemnak/Gun/python/a31/visualization-icd10/public/pop\\{year\\}\\.csv', encoding='utf-8-sig'\\) as f:\n        rows = list\\(csv\\.reader\\(f\\)\\)\n    # find national row\n    nat = None\n    for r in rows:\n        if 'รวมทั้งประเทศ' in str\\(r\\):\n            nat = r; break\n    print\\(f'pop\\{year\\}: cols=\\{len\\(rows\\[1\\]\\)\\}, nat_data cols 2-46:', nat\\[2:47\\] if nat else 'NOT FOUND'\\)\n\"\n$/": {
+            "approve": true,
+            "matchCommandLine": true
+        },
+        "awk": true,
+        "uniq": true,
+        "/^python3 -c \"\nimport csv\nfor year in \\[2558, 2563, 2564, 2565\\]:\n    with open\\(f'/Users/gunkhemnak/Gun/python/a31/visualization-icd10/public/pop\\{year\\}\\.csv', encoding='utf-8-sig'\\) as f:\n        rows = list\\(csv\\.reader\\(f\\)\\)\n    nat = None\n    for r in rows:\n        if 'รวมทั้งประเทศ' in str\\(r\\):\n            nat = r; break\n    print\\(f'pop\\{year\\}: len\\(rows\\)=\\{len\\(rows\\)\\}, header1=\\{rows\\[1\\]\\[:5\\]\\}, national found=\\{nat is not None\\}'\\)\n    if nat:\n        print\\(f'  col2-10: \\{nat\\[2:11\\]\\}'\\)\n\"\n$/": {
+            "approve": true,
+            "matchCommandLine": true
+        },
+        "/^python3 -c \"\nimport csv\n# Check pop2558 \\(2015\\) - national row not found\nwith open\\('/Users/gunkhemnak/Gun/python/a31/visualization-icd10/public/pop2558\\.csv', encoding='utf-8-sig'\\) as f:\n    rows = list\\(csv\\.reader\\(f\\)\\)\nprint\\('=== pop2558 \\(2015\\) ==='\\)\nfor i, r in enumerate\\(rows\\[:10\\]\\):\n    print\\(f'row\\{i\\}: \\{r\\[:6\\]\\}'\\)\n\"\n$/": {
+            "approve": true,
+            "matchCommandLine": true
+        },
+        "/^python3 -c \"\nimport csv\n# Check pop2563 \\(2020\\) - national found but empty cols\nwith open\\('/Users/gunkhemnak/Gun/python/a31/visualization-icd10/public/pop2563\\.csv', encoding='utf-8-sig'\\) as f:\n    rows = list\\(csv\\.reader\\(f\\)\\)\nprint\\('=== pop2563 \\(2020\\) ==='\\)\nfor i, r in enumerate\\(rows\\[:6\\]\\):\n    print\\(f'row\\{i\\}: \\{r\\[:8\\]\\}'\\)\nnat_idx = None\nfor i, r in enumerate\\(rows\\):\n    if 'รวมทั้งประเทศ' in str\\(r\\):\n        nat_idx = i; break\nprint\\(f'National row idx: \\{nat_idx\\}'\\)\nprint\\(f'National row full: \\{rows\\[nat_idx\\]\\}'\\)\n\"\n$/": {
+            "approve": true,
+            "matchCommandLine": true
+        },
+        "/^python3 -c \"\nimport csv\nfor year in \\[2553,2554,2555,2556,2557,2558,2559,2560,2561,2562,2563,2564,2565,2566,2567\\]:\n    with open\\(f'/Users/gunkhemnak/Gun/python/a31/visualization-icd10/public/pop\\{year\\}\\.csv', encoding='utf-8-sig'\\) as f:\n        rows = list\\(csv\\.reader\\(f\\)\\)\n    # find national data row - look for row where col\\[1\\] has รวมทั้งประเทศ/รวม and col\\[2\\] is numeric\n    nat = None\n    for i, r in enumerate\\(rows\\):\n        import re\n        c1 = r\\[1\\]\\.strip\\(\\) if len\\(r\\)>1 else ''\n        c2 = r\\[2\\]\\.strip\\(\\) if len\\(r\\)>2 else ''\n        if \\('รวมทั้งประเทศ' in c1 or c1=='รวม'\\) and re\\.match\\(r'\\\\d', c2\\):\n            nat = \\(i, r\\)\n            break\n    if nat:\n        print\\(f'pop\\{year\\}: row \\{nat\\[0\\]\\}, col\\[1\\]=\\{repr\\(nat\\[1\\]\\[1\\]\\[:15\\]\\)\\}, col2=\\{nat\\[1\\]\\[2\\]\\}, col4=\\{nat\\[1\\]\\[4\\]\\}, total_cols=\\{len\\(nat\\[1\\]\\)\\}'\\)\n    else:\n        print\\(f'pop\\{year\\}: NATIONAL NOT FOUND'\\)\n\"\n$/": {
+            "approve": true,
+            "matchCommandLine": true
+        },
+        "/^python3 -c \"\nimport csv, re\nfor year in \\[2558, 2563\\]:\n    with open\\(f'/Users/gunkhemnak/Gun/python/a31/visualization-icd10/public/pop\\{year\\}\\.csv', encoding='utf-8-sig'\\) as f:\n        rows = list\\(csv\\.reader\\(f\\)\\)\n    print\\(f'=== pop\\{year\\} ==='\\)\n    print\\('Header row \\(row1\\):', rows\\[1\\]\\)\n    print\\('Row3 full:', rows\\[3\\]\\)\n    print\\(\\)\n\"\n$/": {
+            "approve": true,
+            "matchCommandLine": true
+        },
+        "/^python3 -c \"\nimport csv, re\nresults = \\{\\}\nfor year in \\[2553,2558,2563,2564,2565\\]:\n    with open\\(f'/Users/gunkhemnak/Gun/python/a31/visualization-icd10/public/pop\\{year\\}\\.csv', encoding='utf-8-sig'\\) as f:\n        rows = list\\(csv\\.reader\\(f\\)\\)\n    nat = next\\(\\(r for r in rows if \\(r\\[1\\]\\.strip\\(\\) in \\('รวมทั้งประเทศ','รวม'\\)\\) and re\\.match\\(r'\\\\d', r\\[2\\]\\.strip\\(\\)\\)\\), None\\)\n    if nat:\n        # age bins at col 4 \\+ 3\\*i\n        ages = \\['0-4','5-9','10-14','65-69','70\\+'\\]\n        idxs = \\[4, 7, 10, 43, 46\\]\n        vals = \\{a: nat\\[i\\] for a,i in zip\\(ages,idxs\\)\\}\n        print\\(f'pop\\{year\\} \\(\\{year-543\\}\\): \\{vals\\}'\\)\n    else:\n        print\\(f'pop\\{year\\}: NOT FOUND'\\)\n\"\n$/": {
+            "approve": true,
+            "matchCommandLine": true
+        },
+        "/^python3 -c \"\nimport csv, re\n\nAGE_LABELS_5Y = \\['0-4','5-9','10-14','15-19','20-24','25-29','30-34','35-39','40-44','45-49','50-54','55-59','60-64','65-69','70\\+'\\]\n\nprint\\('=== Population extraction test \\(simulating JS logic\\) ==='\\)\nfor adyear in \\[2010,2015,2020,2021,2022,2023,2024\\]:\n    thaiYear = adyear \\+ 543\n    with open\\(f'/Users/gunkhemnak/Gun/python/a31/visualization-icd10/public/pop\\{thaiYear\\}\\.csv', encoding='utf-8-sig'\\) as f:\n        rows = list\\(csv\\.reader\\(f\\)\\)\n    nat = next\\(\n        \\(r for r in rows\n         if \\(r\\[1\\]\\.strip\\(\\) in \\('รวมทั้งประเทศ','รวม'\\)\\) and re\\.match\\(r'\\\\d', r\\[2\\]\\.strip\\(\\)\\)\\),\n        None\n    \\)\n    if nat:\n        popByAge = \\{\\}\n        for i, label in enumerate\\(AGE_LABELS_5Y\\):\n            idx = 4 \\+ 3\\*i\n            val = int\\(nat\\[idx\\]\\.replace\\(',',''\\)\\) if idx < len\\(nat\\) and re\\.match\\(r'\\\\d', nat\\[idx\\]\\.replace\\(',',''\\)\\) else 0\n            popByAge\\[label\\] = val\n        total = sum\\(popByAge\\.values\\(\\)\\)\n        print\\(f'\\{adyear\\} \\(pop\\{thaiYear\\}\\): total population = \\{total:,\\}  \\| 0-4=\\{popByAge\\[\\\\\"0-4\\\\\"\\]:,\\} \\| 65-69=\\{popByAge\\[\\\\\"65-69\\\\\"\\]:,\\} \\| 70\\+=\\{popByAge\\[\\\\\"70\\+\\\\\"\\]:,\\}'\\)\n    else:\n        print\\(f'\\{adyear\\} \\(pop\\{thaiYear\\}\\): NATIONAL ROW NOT FOUND'\\)\n\"\n$/": {
+            "approve": true,
+            "matchCommandLine": true
+        },
+        "/^python3 /tmp/check_numeric\\.py$/": {
+            "approve": true,
+            "matchCommandLine": true
+        }
+    }
+}
