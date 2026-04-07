@@ -69,6 +69,114 @@ const YEAR_COLORS = [
   '#9edae5','#ffbb78','#98df8a','#ff9896','#c5b0d5'
 ];
 
+// ── Venn Diagram helpers ──────────────────────────────────────────────────────
+
+interface VennRegions {
+  total: number;
+  ep1Size: number;
+  ep2Size: number;
+  ep1DrugSize: number;
+  only1: number;
+  only2: number;
+  only3: number;
+  only12: number;
+  only13: number;
+  only23: number;
+  all3: number;
+}
+
+function computeVennRegions(subset: EpisodeData[]): VennRegions | null {
+  if (subset.length === 0) return null;
+  const hasDrug = (d: EpisodeData) => String(d.have_in_drug_list).includes('True');
+  const ep1     = new Set(subset.filter(d => d.episode >= 1).map(d => d.id));
+  const ep2     = new Set(subset.filter(d => d.episode >= 2).map(d => d.id));
+  const ep1Drug = new Set(subset.filter(d => d.episode >= 1 && hasDrug(d)).map(d => d.id));
+  const i12     = new Set([...ep1].filter(id => ep2.has(id)));
+  const i13     = new Set([...ep1].filter(id => ep1Drug.has(id)));
+  const i23     = new Set([...ep2].filter(id => ep1Drug.has(id)));
+  const i123    = new Set([...i12].filter(id => ep1Drug.has(id)));
+  return {
+    total:      new Set(subset.map(d => d.id)).size,
+    ep1Size:    ep1.size,
+    ep2Size:    ep2.size,
+    ep1DrugSize: ep1Drug.size,
+    only1:  ep1.size    - i12.size  - i13.size  + i123.size,
+    only2:  ep2.size    - i12.size  - i23.size  + i123.size,
+    only3:  ep1Drug.size - i13.size - i23.size  + i123.size,
+    only12: i12.size  - i123.size,
+    only13: i13.size  - i123.size,
+    only23: i23.size  - i123.size,
+    all3:   i123.size,
+  };
+}
+
+function VennSVG({ v, diagCode }: { v: VennRegions; diagCode: string }) {
+  const BLUE  = '#4C72B0';
+  const GREEN = '#55A868';
+  const RED   = '#C44E52';
+
+  const lbl = (x: number, y: number, val: number) => (
+    <text x={x} y={y} textAnchor="middle" dominantBaseline="middle"
+          fontSize={13} fontWeight="bold" fill="#1f1f1f">
+      {val.toLocaleString()}
+    </text>
+  );
+
+  const pct = (n: number) => v.total > 0 ? `${((n / v.total) * 100).toFixed(1)}%` : '—';
+  const infoLines = [
+    { label: 'Total patients',           val: v.total,       pct: null },
+    { label: 'Episode ≥ 1',              val: v.ep1Size,     pct: pct(v.ep1Size) },
+    { label: 'Episode ≥ 2',              val: v.ep2Size,     pct: pct(v.ep2Size) },
+    { label: 'Episode ≥ 1 & Drug=True',  val: v.ep1DrugSize, pct: pct(v.ep1DrugSize) },
+    { label: 'All three',                val: v.all3,        pct: pct(v.all3) },
+  ];
+
+  return (
+    <div className="card" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem' }}>
+      <h5 style={{ margin: 0, fontSize: '1.05rem', color: '#4a5568', fontWeight: 700 }}>
+        first_diagcode = <span style={{ color: 'var(--primary)' }}>{diagCode}</span>
+        &nbsp;—&nbsp;n={v.total.toLocaleString()} patients
+      </h5>
+
+      <svg viewBox="0 0 500 490" style={{ width: '100%', maxWidth: 440 }}>
+        {/* Circles */}
+        <circle cx={170} cy={190} r={130} fill={BLUE}  fillOpacity={0.35} stroke="white" strokeWidth={2} />
+        <circle cx={330} cy={190} r={130} fill={GREEN} fillOpacity={0.35} stroke="white" strokeWidth={2} />
+        <circle cx={250} cy={310} r={130} fill={RED}   fillOpacity={0.35} stroke="white" strokeWidth={2} />
+
+        {/* Region counts */}
+        {lbl(90,  175, v.only1)}   {/* only A */}
+        {lbl(410, 175, v.only2)}   {/* only B */}
+        {lbl(250, 415, v.only3)}   {/* only C */}
+        {lbl(250, 148, v.only12)}  {/* A∩B ¬C */}
+        {lbl(163, 310, v.only13)}  {/* A∩C ¬B */}
+        {lbl(337, 310, v.only23)}  {/* B∩C ¬A */}
+        {lbl(250, 247, v.all3)}    {/* all three */}
+
+        {/* Set labels */}
+        <text x={65}  y={52} textAnchor="middle" fontSize={13} fontWeight="bold" fill={BLUE} >Episode ≥ 1</text>
+        <text x={435} y={52} textAnchor="middle" fontSize={13} fontWeight="bold" fill={GREEN}>Episode ≥ 2</text>
+        <text x={250} y={460} textAnchor="middle" fontSize={12} fontWeight="bold" fill={RED}  >Episode ≥ 1 &amp; Drug=True</text>
+      </svg>
+
+      {/* Stats table */}
+      <table style={{ fontSize: '0.88rem', borderCollapse: 'collapse', width: '100%', maxWidth: 380 }}>
+        <tbody>
+          {infoLines.map(row => (
+            <tr key={row.label} style={{ borderBottom: '1px solid #e5e7eb' }}>
+              <td style={{ padding: '4px 8px', color: '#374151' }}>{row.label}</td>
+              <td style={{ padding: '4px 8px', textAlign: 'right', fontWeight: 600 }}>{row.val.toLocaleString()}</td>
+              {row.pct !== null && (
+                <td style={{ padding: '4px 8px', textAlign: 'right', color: '#6b7280' }}>{row.pct}</td>
+              )}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 export default function App() {
   const [rawData, setRawData] = useState<EpisodeData[]>([]);
   const [loading, setLoading] = useState(true);
@@ -296,6 +404,16 @@ export default function App() {
     () => getAgeRateData(interData, populationData, selectedYears),
     [interData, populationData, selectedYears]
   );
+
+  const VENN_CODES = ['A310', 'A311', 'A318', 'A319'] as const;
+  const vennData = useMemo(() => {
+    const result: Record<string, VennRegions | null> = {};
+    VENN_CODES.forEach(code => {
+      const subset = rawData.filter(d => d.first_diagcode === code);
+      result[code] = computeVennRegions(subset);
+    });
+    return result;
+  }, [rawData]);
 
   if (loading) return <div className="loading">Comparing Patterns...</div>;
 
@@ -549,6 +667,22 @@ export default function App() {
               </LineChart>
             </ResponsiveContainer>
           </div>
+        </div>
+      </div>
+
+      {/* === Venn Diagram: Episode & Drug Overlap by first_diagcode === */}
+      <div className="comparison-row">
+        <h3 className="section-title">Episode &amp; Drug Overlap — Venn Diagram by first_diagcode</h3>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(380px, 1fr))', gap: '2rem' }}>
+          {VENN_CODES.map(code => {
+            const v = vennData[code];
+            if (!v) return (
+              <div key={code} className="card" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 200, color: '#9ca3af' }}>
+                No records for first_diagcode = {code}
+              </div>
+            );
+            return <VennSVG key={code} v={v} diagCode={code} />;
+          })}
         </div>
       </div>
     </div>
