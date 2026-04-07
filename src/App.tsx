@@ -110,7 +110,7 @@ function computeVennRegions(subset: EpisodeData[]): VennRegions | null {
   };
 }
 
-function VennSVG({ v, diagCode }: { v: VennRegions; diagCode: string }) {
+function VennSVG({ v, diagCode, diagType }: { v: VennRegions; diagCode: string; diagType: string }) {
   const BLUE  = '#4C72B0';
   const GREEN = '#55A868';
   const RED   = '#C44E52';
@@ -134,7 +134,7 @@ function VennSVG({ v, diagCode }: { v: VennRegions; diagCode: string }) {
   return (
     <div className="card" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem' }}>
       <h5 style={{ margin: 0, fontSize: '1.05rem', color: '#4a5568', fontWeight: 700 }}>
-        first_diagcode = <span style={{ color: 'var(--primary)' }}>{diagCode}</span>
+        {diagType} = <span style={{ color: 'var(--primary)' }}>{diagCode}</span>
         &nbsp;—&nbsp;n={v.total.toLocaleString()} patients
       </h5>
 
@@ -407,12 +407,13 @@ export default function App() {
 
   const VENN_CODES = ['A310', 'A311', 'A318', 'A319'] as const;
   const vennData = useMemo(() => {
-    const result: Record<string, VennRegions | null> = {};
+    const first: Record<string, VennRegions | null> = {};
+    const most: Record<string, VennRegions | null> = {};
     VENN_CODES.forEach(code => {
-      const subset = rawData.filter(d => d.first_diagcode === code);
-      result[code] = computeVennRegions(subset);
+      first[code] = computeVennRegions(rawData.filter(d => d.first_diagcode === code));
+      most[code]  = computeVennRegions(rawData.filter(d => d.most_diagcode  === code));
     });
-    return result;
+    return { first, most };
   }, [rawData]);
 
   if (loading) return <div className="loading">Comparing Patterns...</div>;
@@ -670,18 +671,35 @@ export default function App() {
         </div>
       </div>
 
-      {/* === Venn Diagram: Episode & Drug Overlap by first_diagcode === */}
+      {/* === Venn Diagram Part 1: by first_diagcode === */}
       <div className="comparison-row">
-        <h3 className="section-title">Episode &amp; Drug Overlap — Venn Diagram by first_diagcode</h3>
+        <h3 className="section-title">Episode &amp; Drug Overlap — Venn Diagram</h3>
+        <h4 style={{ margin: '0 0 1rem 0', color: '#065f46', fontWeight: 700, fontSize: '1rem' }}>Part 1 — by first_diagcode</h4>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(380px, 1fr))', gap: '2rem' }}>
           {VENN_CODES.map(code => {
-            const v = vennData[code];
+            const v = vennData.first[code];
             if (!v) return (
               <div key={code} className="card" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 200, color: '#9ca3af' }}>
                 No records for first_diagcode = {code}
               </div>
             );
-            return <VennSVG key={code} v={v} diagCode={code} />;
+            return <VennSVG key={code} v={v} diagCode={code} diagType="first_diagcode" />;
+          })}
+        </div>
+      </div>
+
+      {/* === Venn Diagram Part 2: by most_diagcode === */}
+      <div className="comparison-row">
+        <h4 style={{ margin: '0 0 1rem 0', color: '#1d4ed8', fontWeight: 700, fontSize: '1rem' }}>Part 2 — by most_diagcode</h4>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(380px, 1fr))', gap: '2rem' }}>
+          {VENN_CODES.map(code => {
+            const v = vennData.most[code];
+            if (!v) return (
+              <div key={code} className="card" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 200, color: '#9ca3af' }}>
+                No records for most_diagcode = {code}
+              </div>
+            );
+            return <VennSVG key={code} v={v} diagCode={code} diagType="most_diagcode" />;
           })}
         </div>
       </div>
