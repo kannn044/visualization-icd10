@@ -13,7 +13,9 @@
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
+    "@types/d3-geo": "^3.1.0",
     "clsx": "^2.1.1",
+    "d3-geo": "^3.1.1",
     "lucide-react": "^0.577.0",
     "papaparse": "^5.5.3",
     "recharts": "^3.8.0",

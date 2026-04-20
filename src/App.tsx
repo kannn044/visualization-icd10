@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import Papa from 'papaparse';
+import { geoMercator, geoPath } from 'd3-geo';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, 
-  Cell, LabelList, PieChart, Pie, Legend,
-  LineChart, Line
+  Cell, LabelList, PieChart, Pie, Legend
 } from 'recharts';
 
 interface EpisodeData {
@@ -22,6 +22,41 @@ interface EpisodeData {
 }
 
 type PopulationData = { [year: number]: { [ageBin: string]: number } };
+type ProvinceTotalPop = { [year: number]: { [code: string]: number } };
+
+// GeoJSON province name → 2-digit changwat code
+const GEO_NAME_TO_CODE: Record<string, string> = {
+  'Bangkok Metropolis': '10', 'Bangkok': '10',
+  'Samut Prakan': '11', 'Nonthaburi': '12', 'Pathum Thani': '13',
+  'Phra Nakhon Si Ayutthaya': '14', 'Ang Thong': '15', 'Lop Buri': '16',
+  'Sing Buri': '17', 'Chai Nat': '18', 'Saraburi': '19',
+  'Chon Buri': '20', 'Rayong': '21', 'Chanthaburi': '22',
+  'Trat': '23', 'Chachoengsao': '24', 'Prachin Buri': '25',
+  'Nakhon Nayok': '26', 'Sa Kaeo': '27',
+  'Nakhon Ratchasima': '30', 'Korat': '30', 'Buri Ram': '31',
+  'Surin': '32', 'Si Sa Ket': '33', 'Ubon Ratchathani': '34',
+  'Yasothon': '35', 'Chaiyaphum': '36', 'Amnat Charoen': '37',
+  'Bueng Kan': '38', 'Nong Bua Lam Phu': '39',
+  'Khon Kaen': '40', 'Udon Thani': '41', 'Loei': '42',
+  'Nong Khai': '43', 'Maha Sarakham': '44', 'Roi Et': '45',
+  'Kalasin': '46', 'Sakon Nakhon': '47', 'Nakhon Phanom': '48',
+  'Mukdahan': '49',
+  'Chiang Mai': '50', 'Lamphun': '51', 'Lampang': '52',
+  'Uttaradit': '53', 'Phrae': '54', 'Nan': '55',
+  'Phayao': '56', 'Chiang Rai': '57', 'Mae Hong Son': '58',
+  'Nakhon Sawan': '60', 'Uthai Thani': '61', 'Kamphaeng Phet': '62',
+  'Tak': '63', 'Sukhothai': '64', 'Phitsanulok': '65',
+  'Phichit': '66', 'Phetchabun': '67',
+  'Ratchaburi': '70', 'Kanchanaburi': '71', 'Suphan Buri': '72',
+  'Nakhon Pathom': '73', 'Samut Sakhon': '74', 'Samut Songkhram': '75',
+  'Phetchaburi': '76', 'Prachuap Khiri Khan': '77',
+  'Nakhon Si Thammarat': '80', 'Krabi': '81',
+  'Phangnga': '82', 'Phang Nga': '82', 'Phuket': '83',
+  'Surat Thani': '84', 'Ranong': '85', 'Chumphon': '86',
+  'Songkhla': '90', 'Satun': '91', 'Trang': '92',
+  'Phatthalung': '93', 'Phatalung': '93', 'Pattani': '94',
+  'Yala': '95', 'Narathiwat': '96',
+};
 
 interface AddressData {
   changwat: string;
@@ -67,6 +102,11 @@ const YEAR_COLORS = [
   '#1f77b4','#ff7f0e','#2ca02c','#d62728','#9467bd',
   '#8c564b','#e377c2','#636363','#bcbd22','#17becf',
   '#9edae5','#ffbb78','#98df8a','#ff9896','#c5b0d5'
+];
+const AGE_COLORS = [
+  '#1f77b4','#ff7f0e','#2ca02c','#d62728','#9467bd',
+  '#8c564b','#e377c2','#7f7f7f','#bcbd22','#17becf',
+  '#aec7e8','#ffbb78','#98df8a','#ff9896','#c5b0d5'
 ];
 
 // ── Venn Diagram helpers ──────────────────────────────────────────────────────
@@ -177,6 +217,77 @@ function VennSVG({ v, diagCode, diagType }: { v: VennRegions; diagCode: string; 
   );
 }
 
+// ── Thailand GeoMap ─────────────────────────────────────────────────────────
+
+function ThailandGeoMap({
+  rateData, geoData, title,
+}: {
+  rateData: Array<{ code: string; rate: number; count: number }>;
+  geoData: any;
+  title: string;
+}) {
+  const W = 420;
+  const H = 560;
+
+  const projection = useMemo(() => geoMercator().fitSize([W, H], geoData), [geoData]);
+  const pathGen    = useMemo(() => geoPath().projection(projection), [projection]);
+
+  const rateMap = useMemo(
+    () => new Map(rateData.map(d => [d.code, d])),
+    [rateData]
+  );
+  const maxRate = useMemo(
+    () => Math.max(...rateData.map(d => d.rate), 1),
+    [rateData]
+  );
+
+  const getColor = (code: string) => {
+    const entry = rateMap.get(code);
+    if (!entry || entry.rate <= 0) return '#e5e7eb';
+    const t = entry.rate / maxRate;
+    const r = Math.round(240 - 205 * t);
+    const g = Math.round(249 - 182 * t);
+    const b = Math.round(255 - 130 * t);
+    return `rgb(${Math.max(0, r)},${Math.max(0, g)},${Math.max(35, b)})`;
+  };
+
+  const legendGrad = `linear-gradient(to right, rgb(240,249,255), rgb(35,67,125))`;
+
+  return (
+    <div className="card chart-card">
+      <h5 style={{ marginBottom: '0.5rem' }}>{title}</h5>
+      <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', maxHeight: 520 }}>
+        {geoData.features.map((feature: any, idx: number) => {
+          const name = feature.properties?.name || '';
+          const code = GEO_NAME_TO_CODE[name] || '';
+          const d = pathGen(feature);
+          if (!d) return null;
+          const entry = rateMap.get(code);
+          const tooltip = entry
+            ? `${name} (${code}): ${entry.rate.toFixed(2)} per 100k (n=${entry.count})`
+            : `${name}: no data`;
+          return (
+            <path key={idx} d={d} fill={getColor(code)} stroke="white" strokeWidth={0.5}>
+              <title>{tooltip}</title>
+            </path>
+          );
+        })}
+      </svg>
+      {/* Color legend */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6, fontSize: 11, color: '#374151' }}>
+        <span>0</span>
+        <div style={{ flex: 1, height: 10, borderRadius: 4, background: legendGrad, border: '1px solid #d1d5db' }} />
+        <span>{maxRate.toFixed(1)}</span>
+        <span style={{ color: '#6b7280' }}>per 100k</span>
+      </div>
+      <div style={{ marginTop: 4, fontSize: 11, color: '#9ca3af', display: 'flex', alignItems: 'center', gap: 6 }}>
+        <span style={{ display: 'inline-block', width: 14, height: 14, background: '#e5e7eb', border: '1px solid #d1d5db', borderRadius: 2 }} />
+        No data
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
   const [rawData, setRawData] = useState<EpisodeData[]>([]);
   const [loading, setLoading] = useState(true);
@@ -185,8 +296,10 @@ export default function App() {
   const [diagFilter, setDiagFilter] = useState('All');
   const [genderFilter, setGenderFilter] = useState({ all: true, male: false, female: false });
   const [zoneFilter, setZoneFilter] = useState('All');
-  const [selectedYears, setSelectedYears] = useState<number[]>(ALL_YEARS);
+  const [selectedRateYear, setSelectedRateYear] = useState<number>(2024);
   const [populationData, setPopulationData] = useState<PopulationData>({});
+  const [provincePopData, setProvincePopData] = useState<ProvinceTotalPop>({});
+  const [thailandGeo, setThailandGeo] = useState<any>(null);
 
   const handleGenderToggle = (type: 'all' | 'male' | 'female') => {
     if (type === 'all') {
@@ -260,10 +373,31 @@ export default function App() {
               popByAge[label] = isNaN(val) ? 0 : val;
             });
           }
-          return [year, popByAge] as [number, { [ageBin: string]: number }];
+          // Province-level total population (col[49] = grand total)
+          const provPop: { [code: string]: number } = {};
+          rows.forEach(r => {
+            const code = String(r[0] || '').trim().replace(/"/g, '');
+            if (/^\d{2}$/.test(code)) {
+              const total = parseInt(String(r[49] || '0').replace(/,/g, ''), 10);
+              if (!isNaN(total) && total > 0) provPop[code] = total;
+            }
+          });
+          return [year, popByAge, provPop] as [number, { [ageBin: string]: number }, { [code: string]: number }];
         })
       );
-      setPopulationData(Object.fromEntries(popEntries) as PopulationData);
+      setPopulationData(Object.fromEntries(popEntries.map(([y, ages]) => [y, ages])) as PopulationData);
+      const provMap: ProvinceTotalPop = {};
+      popEntries.forEach(([y, , provs]) => { provMap[y as number] = provs as { [code: string]: number }; });
+      setProvincePopData(provMap);
+
+      // Fetch Thailand provinces GeoJSON
+      try {
+        const geoRes = await fetch('https://raw.githubusercontent.com/apisit/thailand.json/master/thailand.json');
+        if (geoRes.ok) {
+          const geoJson = await geoRes.json();
+          setThailandGeo(geoJson);
+        }
+      } catch { /* map optional */ }
 
       setLoading(false);
     };
@@ -372,37 +506,65 @@ export default function App() {
   const unionStats = useMemo(() => getStats(unionData), [unionData]);
   const interStats = useMemo(() => getStats(interData), [interData]);
 
-  const getAgeRateData = (data: EpisodeData[], popData: PopulationData, years: number[]) => {
+  const getAgeRateForYear = (data: EpisodeData[], popData: PopulationData, year: number) => {
     if (!data.length || !Object.keys(popData).length) return [];
-    const counts: { [year: number]: { [ageBin: string]: number } } = {};
-    years.forEach(y => {
-      counts[y] = {};
-      AGE_LABELS_5Y.forEach(a => { counts[y][a] = 0; });
-    });
+    const counts: { [ageBin: string]: number } = {};
+    AGE_LABELS_5Y.forEach(a => { counts[a] = 0; });
+    const seen = new Set<string>();
     data.forEach(d => {
       if (!d.episode_start) return;
-      const year = parseInt(String(d.episode_start).substring(0, 4), 10);
-      if (!years.includes(year)) return;
-      const ageBin = getAgeBin5Y(d.age_at_episode_start);
-      counts[year][ageBin]++;
+      const epYear = parseInt(String(d.episode_start).substring(0, 4), 10);
+      if (epYear !== year) return;
+      if (seen.has(d.id)) return;
+      seen.add(d.id);
+      counts[getAgeBin5Y(d.age_at_episode_start)]++;
     });
-    return AGE_LABELS_5Y.map(ageBin => {
-      const point: Record<string, any> = { name: ageBin };
-      years.forEach(y => {
-        const pop = popData[y]?.[ageBin] ?? 0;
-        point[String(y)] = pop > 0 ? parseFloat(((counts[y][ageBin] / pop) * 100000).toFixed(2)) : 0;
-      });
-      return point;
+    return AGE_LABELS_5Y.map(bin => {
+      const pop = popData[year]?.[bin] ?? 0;
+      return { name: bin, rate: pop > 0 ? parseFloat(((counts[bin] / pop) * 100000).toFixed(2)) : 0 };
     });
   };
 
-  const unionRateData = useMemo(
-    () => getAgeRateData(unionData, populationData, selectedYears),
-    [unionData, populationData, selectedYears]
+  const getProvinceRateByYear = (data: EpisodeData[], provPop: ProvinceTotalPop, year: number) => {
+    if (!data.length || !Object.keys(provPop).length) return [];
+    const counts: { [code: string]: number } = {};
+    const seen = new Set<string>();
+    data.forEach(d => {
+      if (!d.episode_start) return;
+      const epYear = parseInt(String(d.episode_start).substring(0, 4), 10);
+      if (epYear !== year) return;
+      const code = String(d.changwat || '').trim().replace(/"/g, '');
+      const key = `${d.id}|${code}`;
+      if (seen.has(key)) return;
+      seen.add(key);
+      if (!counts[code]) counts[code] = 0;
+      counts[code]++;
+    });
+    const popByCode = provPop[year] || {};
+    return Object.entries(counts)
+      .map(([code, cnt]) => ({
+        code,
+        rate: popByCode[code] ? parseFloat(((cnt / popByCode[code]) * 100000).toFixed(2)) : 0,
+        count: cnt,
+      }))
+      .filter(d => d.rate > 0);
+  };
+
+  const unionAgeRateData = useMemo(
+    () => getAgeRateForYear(unionData, populationData, selectedRateYear),
+    [unionData, populationData, selectedRateYear]
   );
-  const interRateData = useMemo(
-    () => getAgeRateData(interData, populationData, selectedYears),
-    [interData, populationData, selectedYears]
+  const interAgeRateData = useMemo(
+    () => getAgeRateForYear(interData, populationData, selectedRateYear),
+    [interData, populationData, selectedRateYear]
+  );
+  const unionProvRateData = useMemo(
+    () => getProvinceRateByYear(unionData, provincePopData, selectedRateYear),
+    [unionData, provincePopData, selectedRateYear]
+  );
+  const interProvRateData = useMemo(
+    () => getProvinceRateByYear(interData, provincePopData, selectedRateYear),
+    [interData, provincePopData, selectedRateYear]
   );
 
   const VENN_CODES = ['A310', 'A311', 'A318', 'A319'] as const;
@@ -609,66 +771,98 @@ export default function App() {
       <RenderComparison title="Health Zone Patterns" dataUnion={unionStats.zone} dataInter={interStats.zone} />
       <RenderComparison title="Geographical Patterns (Top 10 Provinces)" dataUnion={unionStats.province} dataInter={interStats.province} layout="vertical" />
 
-      {/* === Rate Line Chart by Age Group (5-Year Bands) === */}
+      {/* === Rate Bar Chart by Age Group (5-Year Bands) === */}
       <div className="comparison-row">
         <h3 className="section-title">Episode Rate per 100,000 Population by Age Group (5-Year Bands)</h3>
 
-        {/* Year checkboxes */}
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', marginBottom: '16px', padding: '12px', background: '#f8f9fa', borderRadius: '8px', alignItems: 'center' }}>
-          <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '13px', fontWeight: 600, cursor: 'pointer', marginRight: '6px' }}>
-            <input
-              type="checkbox"
-              checked={selectedYears.length === ALL_YEARS.length}
-              onChange={e => setSelectedYears(e.target.checked ? [...ALL_YEARS] : [])}
-            />
-            All
-          </label>
-          {ALL_YEARS.map((y, i) => (
-            <label key={y} style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '13px', cursor: 'pointer', color: YEAR_COLORS[i], fontWeight: 600 }}>
-              <input
-                type="checkbox"
-                checked={selectedYears.includes(y)}
-                onChange={e => setSelectedYears(prev =>
-                  e.target.checked ? [...prev, y].sort((a, b) => a - b) : prev.filter(x => x !== y)
-                )}
-              />
-              {y}
-            </label>
-          ))}
+        {/* Year dropdown */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px', padding: '12px', background: '#f8f9fa', borderRadius: '8px' }}>
+          <label style={{ fontWeight: 600, fontSize: '14px' }}>Year:</label>
+          <select
+            value={selectedRateYear}
+            onChange={e => setSelectedRateYear(parseInt(e.target.value))}
+            style={{ fontSize: '14px', padding: '4px 10px', borderRadius: '6px', border: '1px solid #d1d5db', cursor: 'pointer' }}
+          >
+            {ALL_YEARS.map(y => <option key={y} value={y}>{y}</option>)}
+          </select>
         </div>
 
         <div className="comparison-grid">
           <div className="card chart-card">
-            <h5>Union (2U3) Pattern &mdash; rate per 100k</h5>
-            <ResponsiveContainer width="100%" height={320}>
-              <LineChart data={unionRateData} margin={{ top: 10, right: 30, left: 20, bottom: 5 }}>
+            <h5>Union (2U3) Pattern &mdash; rate per 100k ({selectedRateYear})</h5>
+            <ResponsiveContainer width="100%" height={360}>
+              <BarChart data={unionAgeRateData} margin={{ top: 10, right: 30, left: 20, bottom: 5 }}>
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis dataKey="name" tick={{ fontSize: 11 }} />
                 <YAxis label={{ value: 'per 100k', angle: -90, position: 'insideLeft', offset: -5, fontSize: 11 }} tick={{ fontSize: 11 }} />
-                <Tooltip />
-                <Legend />
-                {selectedYears.map(y => (
-                  <Line key={y} type="monotone" dataKey={String(y)} stroke={YEAR_COLORS[ALL_YEARS.indexOf(y)]} dot={false} strokeWidth={2} />
-                ))}
-              </LineChart>
+                <Tooltip formatter={(v: any) => [`${v}`, 'Rate per 100k']} />
+                <Bar dataKey="rate" name="Rate per 100k" radius={[4, 4, 0, 0]}>
+                  {unionAgeRateData.map((_: any, i: number) => (
+                    <Cell key={i} fill={AGE_COLORS[i % AGE_COLORS.length]} />
+                  ))}
+                  <LabelList dataKey="rate" position="top" style={{ fontSize: 9, fill: '#374151' }} formatter={(v: any) => (v > 0 ? v : '')} />
+                </Bar>
+              </BarChart>
             </ResponsiveContainer>
           </div>
           <div className="card chart-card">
-            <h5>Intersection (2&cap;3) Pattern &mdash; rate per 100k</h5>
-            <ResponsiveContainer width="100%" height={320}>
-              <LineChart data={interRateData} margin={{ top: 10, right: 30, left: 20, bottom: 5 }}>
+            <h5>Intersection (2&cap;3) Pattern &mdash; rate per 100k ({selectedRateYear})</h5>
+            <ResponsiveContainer width="100%" height={360}>
+              <BarChart data={interAgeRateData} margin={{ top: 10, right: 30, left: 20, bottom: 5 }}>
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis dataKey="name" tick={{ fontSize: 11 }} />
                 <YAxis label={{ value: 'per 100k', angle: -90, position: 'insideLeft', offset: -5, fontSize: 11 }} tick={{ fontSize: 11 }} />
-                <Tooltip />
-                <Legend />
-                {selectedYears.map(y => (
-                  <Line key={y} type="monotone" dataKey={String(y)} stroke={YEAR_COLORS[ALL_YEARS.indexOf(y)]} dot={false} strokeWidth={2} />
-                ))}
-              </LineChart>
+                <Tooltip formatter={(v: any) => [`${v}`, 'Rate per 100k']} />
+                <Bar dataKey="rate" name="Rate per 100k" radius={[4, 4, 0, 0]}>
+                  {interAgeRateData.map((_: any, i: number) => (
+                    <Cell key={i} fill={AGE_COLORS[i % AGE_COLORS.length]} />
+                  ))}
+                  <LabelList dataKey="rate" position="top" style={{ fontSize: 9, fill: '#374151' }} formatter={(v: any) => (v > 0 ? v : '')} />
+                </Bar>
+              </BarChart>
             </ResponsiveContainer>
           </div>
         </div>
+      </div>
+
+      {/* === Thailand GeoMap by Province === */}
+      <div className="comparison-row">
+        <h3 className="section-title">Episode Rate per 100,000 Population by Province (Thailand GeoMap)</h3>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px', padding: '12px', background: '#f8f9fa', borderRadius: '8px' }}>
+          <label style={{ fontWeight: 600, fontSize: '14px' }}>Year:</label>
+          <select
+            value={selectedRateYear}
+            onChange={e => setSelectedRateYear(parseInt(e.target.value))}
+            style={{ fontSize: '14px', padding: '4px 10px', borderRadius: '6px', border: '1px solid #d1d5db', cursor: 'pointer' }}
+          >
+            {ALL_YEARS.map(y => <option key={y} value={y}>{y}</option>)}
+          </select>
+          {!thailandGeo && (
+            <span style={{ color: '#9ca3af', fontSize: '12px', marginLeft: '8px' }}>Loading map data…</span>
+          )}
+        </div>
+        {thailandGeo ? (
+          <div className="comparison-grid">
+            <ThailandGeoMap
+              rateData={unionProvRateData}
+              geoData={thailandGeo}
+              title={`Union (2∪3) Pattern — rate per 100k (${selectedRateYear})`}
+            />
+            <ThailandGeoMap
+              rateData={interProvRateData}
+              geoData={thailandGeo}
+              title={`Intersection (2∩3) Pattern — rate per 100k (${selectedRateYear})`}
+            />
+          </div>
+        ) : (
+          <div className="comparison-grid">
+            {[0, 1].map(i => (
+              <div key={i} className="card chart-card" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 300 }}>
+                <p style={{ color: '#9ca3af' }}>Loading Thailand map data…</p>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* === Venn Diagram Part 1: by first_diagcode === */}
