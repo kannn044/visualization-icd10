@@ -245,13 +245,14 @@ function ThailandGeoMap({
     const entry = rateMap.get(code);
     if (!entry || entry.rate <= 0) return '#e5e7eb';
     const t = entry.rate / maxRate;
-    const r = Math.round(240 - 205 * t);
-    const g = Math.round(249 - 182 * t);
-    const b = Math.round(255 - 130 * t);
-    return `rgb(${Math.max(0, r)},${Math.max(0, g)},${Math.max(35, b)})`;
+    // Warm-heat palette (YlOrRd): light yellow → orange → dark red
+    const r = Math.round(255 - 70 * t);
+    const g = Math.round(255 - 255 * t);
+    const b = Math.round(178 - 178 * t);
+    return `rgb(${Math.max(0, r)},${Math.max(0, g)},${Math.max(0, b)})`;
   };
 
-  const legendGrad = `linear-gradient(to right, rgb(240,249,255), rgb(35,67,125))`;
+  const legendGrad = `linear-gradient(to right, #ffffb2, #fd8d3c, #bd0026)`;
 
   return (
     <div className="card chart-card">
@@ -373,13 +374,24 @@ export default function App() {
               popByAge[label] = isNaN(val) ? 0 : val;
             });
           }
-          // Province-level total population (col[49] = grand total)
+          // Province-level total population.
+          // 56-col format (pop2561–pop2566, years 2018–2023) has extra "เกิดปีจันทรคติ" and
+          // "ไม่ทราบ" columns after the age groups so the grand total is at col[55].
+          // All other formats (50, 55, 58 cols) have it at col[49].
+          // pop2563–pop2566 also contain district (อำเภอ) sub-rows whose 2-digit codes
+          // (e.g. district "10" within Bangkok) collide with province codes.  Province rows
+          // always appear BEFORE their districts and have a larger population, so we keep
+          // the MAXIMUM value seen for each code to ensure the province total wins.
+          const headerCols = (rows[1] || rows[0] || []).length;
+          const grandTotalColIdx = headerCols === 56 ? 55 : 49;
           const provPop: { [code: string]: number } = {};
           rows.forEach(r => {
             const code = String(r[0] || '').trim().replace(/"/g, '');
             if (/^\d{2}$/.test(code)) {
-              const total = parseInt(String(r[49] || '0').replace(/,/g, ''), 10);
-              if (!isNaN(total) && total > 0) provPop[code] = total;
+              const total = parseInt(String(r[grandTotalColIdx] || '0').replace(/,/g, ''), 10);
+              if (!isNaN(total) && total > 0 && (provPop[code] === undefined || total > provPop[code])) {
+                provPop[code] = total;
+              }
             }
           });
           return [year, popByAge, provPop] as [number, { [ageBin: string]: number }, { [code: string]: number }];
@@ -695,7 +707,7 @@ export default function App() {
                 (ผู้ป่วยที่กลับมาติดตามอย่างน้อย 1 ครั้ง)
               </li>
               <li>
-                <strong>กลุ่ม 3</strong> — episode ที่มีบันทึก visit <strong>ตั้งแต่ 2 ครั้งขึ้นไป</strong>{' '}
+                <strong>กลุ่ม 3</strong> — episode ที่มีบันทึก visit <strong>ตั้งแต่ 1 ครั้งขึ้นไป</strong>{' '}
                 <em>และ</em> ได้รับ<strong>ยา NTM</strong> (have_in_drug_list = True) อย่างน้อย 1 ครั้งใน episode นั้น
                 (ผู้ป่วยที่ได้รับการรักษาด้วยยาจริง)
               </li>
