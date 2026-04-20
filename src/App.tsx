@@ -533,7 +533,7 @@ export default function App() {
     });
     return AGE_LABELS_5Y.map(bin => {
       const pop = popData[year]?.[bin] ?? 0;
-      return { name: bin, rate: pop > 0 ? parseFloat(((counts[bin] / pop) * 100000).toFixed(2)) : 0 };
+      return { name: bin, rate: pop > 0 ? parseFloat(((counts[bin] / pop) * 100000).toFixed(2)) : 0, count: counts[bin] };
     });
   };
 
@@ -798,6 +798,47 @@ export default function App() {
             {ALL_YEARS.map(y => <option key={y} value={y}>{y}</option>)}
           </select>
         </div>
+
+        {/* Patient count summary by age group */}
+        {(unionAgeRateData.length > 0 || interAgeRateData.length > 0) && (
+          <div style={{ overflowX: 'auto', marginBottom: '16px' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', background: '#fff', borderRadius: '8px', overflow: 'hidden', boxShadow: '0 1px 4px rgba(0,0,0,0.07)' }}>
+              <thead>
+                <tr style={{ background: '#f1f5f9' }}>
+                  <th style={{ padding: '8px 10px', textAlign: 'left', fontWeight: 700, color: '#374151', borderBottom: '2px solid #e5e7eb' }}>Age Group</th>
+                  {AGE_LABELS_5Y.map(label => (
+                    <th key={label} style={{ padding: '8px 6px', textAlign: 'center', fontWeight: 600, color: '#374151', borderBottom: '2px solid #e5e7eb', whiteSpace: 'nowrap' }}>{label}</th>
+                  ))}
+                  <th style={{ padding: '8px 10px', textAlign: 'center', fontWeight: 700, color: '#374151', borderBottom: '2px solid #e5e7eb' }}>Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr style={{ background: '#eef2ff' }}>
+                  <td style={{ padding: '7px 10px', fontWeight: 700, color: '#4338ca', borderBottom: '1px solid #e5e7eb', whiteSpace: 'nowrap' }}>Union (2∪3) — n</td>
+                  {unionAgeRateData.map((d: any) => (
+                    <td key={d.name} style={{ padding: '7px 6px', textAlign: 'center', color: '#1e40af', fontWeight: 600, borderBottom: '1px solid #e5e7eb' }}>
+                      {(d.count ?? 0).toLocaleString()}
+                    </td>
+                  ))}
+                  <td style={{ padding: '7px 10px', textAlign: 'center', fontWeight: 700, color: '#1e40af', borderBottom: '1px solid #e5e7eb' }}>
+                    {unionAgeRateData.reduce((s: number, d: any) => s + (d.count ?? 0), 0).toLocaleString()}
+                  </td>
+                </tr>
+                <tr style={{ background: '#f0fdf4' }}>
+                  <td style={{ padding: '7px 10px', fontWeight: 700, color: '#065f46', whiteSpace: 'nowrap' }}>Intersection (2∩3) — n</td>
+                  {interAgeRateData.map((d: any) => (
+                    <td key={d.name} style={{ padding: '7px 6px', textAlign: 'center', color: '#065f46', fontWeight: 600 }}>
+                      {(d.count ?? 0).toLocaleString()}
+                    </td>
+                  ))}
+                  <td style={{ padding: '7px 10px', textAlign: 'center', fontWeight: 700, color: '#065f46' }}>
+                    {interAgeRateData.reduce((s: number, d: any) => s + (d.count ?? 0), 0).toLocaleString()}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        )}
 
         <div className="comparison-grid">
           <div className="card chart-card">
