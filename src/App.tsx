@@ -9,6 +9,7 @@ import {
 interface EpisodeData {
   id: string;
   episode: number;
+  visit_count: number;
   episode_start: string;
   age_at_episode_start: number;
   have_in_drug_list: string;
@@ -128,9 +129,9 @@ interface VennRegions {
 function computeVennRegions(subset: EpisodeData[]): VennRegions | null {
   if (subset.length === 0) return null;
   const hasDrug = (d: EpisodeData) => String(d.have_in_drug_list).includes('True');
-  const ep1     = new Set(subset.filter(d => d.episode >= 1).map(d => d.id));
-  const ep2     = new Set(subset.filter(d => d.episode >= 2).map(d => d.id));
-  const ep1Drug = new Set(subset.filter(d => d.episode >= 1 && hasDrug(d)).map(d => d.id));
+  const ep1     = new Set(subset.filter(d => d.visit_count >= 1).map(d => d.id));
+  const ep2     = new Set(subset.filter(d => d.visit_count >= 2).map(d => d.id));
+  const ep1Drug = new Set(subset.filter(d => d.visit_count >= 1 && hasDrug(d)).map(d => d.id));
   const i12     = new Set([...ep1].filter(id => ep2.has(id)));
   const i13     = new Set([...ep1].filter(id => ep1Drug.has(id)));
   const i23     = new Set([...ep2].filter(id => ep1Drug.has(id)));
