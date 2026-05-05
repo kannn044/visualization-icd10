@@ -3,7 +3,7 @@ import Papa from 'papaparse';
 import { geoMercator, geoPath } from 'd3-geo';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, 
-  Cell, LabelList, PieChart, Pie, Legend
+  Cell, LabelList, PieChart, Pie, Legend, LineChart, Line
 } from 'recharts';
 
 interface EpisodeData {
@@ -24,6 +24,7 @@ interface EpisodeData {
 
 type PopulationData = { [year: number]: { [ageBin: string]: number } };
 type ProvinceTotalPop = { [year: number]: { [code: string]: number } };
+type PopulationGenderData = { [year: number]: { [ageBin: string]: { m: number; f: number; t: number } } };
 
 // GeoJSON province name → 2-digit changwat code
 const GEO_NAME_TO_CODE: Record<string, string> = {
@@ -301,6 +302,9 @@ export default function App() {
   const [selectedRateYear, setSelectedRateYear] = useState<number>(2024);
   const [populationData, setPopulationData] = useState<PopulationData>({});
   const [provincePopData, setProvincePopData] = useState<ProvinceTotalPop>({});
+  const [populationByGender, setPopulationByGender] = useState<PopulationGenderData>({});
+  const [selectedZoneBarZone, setSelectedZoneBarZone] = useState('All');
+  const [lineChartPattern, setLineChartPattern] = useState<'union' | 'inter'>('union');
   const [thailandGeo, setThailandGeo] = useState<any>(null);
 
   const handleGenderToggle = (type: 'all' | 'male' | 'female') => {
@@ -375,6 +379,19 @@ export default function App() {
               popByAge[label] = isNaN(val) ? 0 : val;
             });
           }
+          // Also extract male/female population per age group for gender-specific incidence
+          const popByAgeGender: { [ageBin: string]: { m: number; f: number; t: number } } = {};
+          if (natRow) {
+            AGE_LABELS_5Y.forEach((label, i) => {
+              const mIdx = 2 + 3 * i;
+              const fIdx = 3 + 3 * i;
+              const tIdx = 4 + 3 * i;
+              const m = parseInt(String(natRow[mIdx] || '0').replace(/,/g, ''), 10);
+              const f = parseInt(String(natRow[fIdx] || '0').replace(/,/g, ''), 10);
+              const t = parseInt(String(natRow[tIdx] || '0').replace(/,/g, ''), 10);
+              popByAgeGender[label] = { m: isNaN(m) ? 0 : m, f: isNaN(f) ? 0 : f, t: isNaN(t) ? 0 : t };
+            });
+          }
           // Province-level total population.
           // 56-col format (pop2561–pop2566, years 2018–2023) has extra "เกิดปีจันทรคติ" and
           // "ไม่ทราบ" columns after the age groups so the grand total is at col[55].
@@ -395,13 +412,16 @@ export default function App() {
               }
             }
           });
-          return [year, popByAge, provPop] as [number, { [ageBin: string]: number }, { [code: string]: number }];
+          return [year, popByAge, provPop, popByAgeGender] as [number, { [ageBin: string]: number }, { [code: string]: number }, { [ageBin: string]: { m: number; f: number; t: number } }];
         })
       );
       setPopulationData(Object.fromEntries(popEntries.map(([y, ages]) => [y, ages])) as PopulationData);
       const provMap: ProvinceTotalPop = {};
       popEntries.forEach(([y, , provs]) => { provMap[y as number] = provs as { [code: string]: number }; });
       setProvincePopData(provMap);
+      const genderPopMap: PopulationGenderData = {};
+      popEntries.forEach(([y, , , genderAges]) => { genderPopMap[y as number] = genderAges as { [ageBin: string]: { m: number; f: number; t: number } }; });
+      setPopulationByGender(genderPopMap);
 
       // Fetch Thailand provinces GeoJSON
       try {
@@ -579,6 +599,50 @@ export default function App() {
     () => getProvinceRateByYear(interData, provincePopData, selectedRateYear),
     [interData, provincePopData, selectedRateYear]
   );
+
+  // ── Line chart: incidence per age group across all years ─────────────────
+  const ageIncidenceByYear = useMemo(() => {
+    if (!Object.keys(populationData).length) return [];
+    const data = lineChartPattern === 'union' ? unionData : interData;
+    return ALL_YEARS.map(year => {
+      const entry: Record<string, number> = { year };
+      getAgeRateForYear(data, populationData, year).forEach(r => { entry[r.name] = r.rate; });
+      return entry;
+    });
+  }, [unionData, interData, populationData, lineChartPattern]);
+
+  // ── Zone bar chart: incidence by age group + gender for selected zone/year ─
+  const zoneAgeGenderRate = useMemo(() => {
+    if (!Object.keys(populationByGender).length) return [];
+    const data = lineChartPattern === 'union' ? unionData : interData;
+    let filtered = data.filter(d => {
+      const epYear = parseInt(String(d.episode_start).substring(0, 4), 10);
+      return epYear === selectedRateYear;
+    });
+    if (selectedZoneBarZone !== 'All') {
+      filtered = filtered.filter(d => String(d.zone_code) === selectedZoneBarZone);
+    }
+    const counts: { [bin: string]: { m: number; f: number; t: number } } = {};
+    AGE_LABELS_5Y.forEach(a => { counts[a] = { m: 0, f: 0, t: 0 }; });
+    const seen = new Set<string>();
+    filtered.forEach(d => {
+      if (seen.has(d.id)) return;
+      seen.add(d.id);
+      const bin = getAgeBin5Y(d.age_at_episode_start);
+      counts[bin].t++;
+      if (d.gender === 'male') counts[bin].m++;
+      else if (d.gender === 'female') counts[bin].f++;
+    });
+    return AGE_LABELS_5Y.map(bin => {
+      const pop = populationByGender[selectedRateYear]?.[bin] ?? { m: 0, f: 0, t: 0 };
+      return {
+        name: bin,
+        total: pop.t > 0 ? parseFloat(((counts[bin].t / pop.t) * 100000).toFixed(2)) : 0,
+        male:  pop.m > 0 ? parseFloat(((counts[bin].m / pop.m) * 100000).toFixed(2)) : 0,
+        female: pop.f > 0 ? parseFloat(((counts[bin].f / pop.f) * 100000).toFixed(2)) : 0,
+      };
+    });
+  }, [unionData, interData, populationByGender, selectedZoneBarZone, selectedRateYear, lineChartPattern]);
 
   const VENN_CODES = ['A310', 'A311', 'A318', 'A319'] as const;
   const vennData = useMemo(() => {
@@ -876,6 +940,110 @@ export default function App() {
               </BarChart>
             </ResponsiveContainer>
           </div>
+        </div>
+      </div>
+
+      {/* === Line Graph: NTM Incidence by Age Group Over Years === */}
+      <div className="comparison-row">
+        <h3 className="section-title">NTM Incidence per 100,000 by Age Group Over Years (Line Graph)</h3>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '16px', padding: '12px', background: '#f8f9fa', borderRadius: '8px', flexWrap: 'wrap' }}>
+          <div>
+            <label style={{ fontWeight: 600, fontSize: '14px', marginRight: 8 }}>Pattern:</label>
+            <select
+              value={lineChartPattern}
+              onChange={e => setLineChartPattern(e.target.value as 'union' | 'inter')}
+              style={{ fontSize: '14px', padding: '4px 10px', borderRadius: '6px', border: '1px solid #d1d5db', cursor: 'pointer' }}
+            >
+              <option value="union">Union (2∪3)</option>
+              <option value="inter">Intersection (2∩3)</option>
+            </select>
+          </div>
+          <span style={{ fontSize: '12px', color: '#6b7280' }}>
+            Showing {lineChartPattern === 'union' ? `Union (n=${unionStats.totalUnique.toLocaleString()})` : `Intersection (n=${interStats.totalUnique.toLocaleString()})`}
+            &nbsp;· Rate per 100k using national population
+          </span>
+        </div>
+        <div className="card chart-card">
+          <ResponsiveContainer width="100%" height={420}>
+            <LineChart data={ageIncidenceByYear} margin={{ top: 10, right: 30, left: 20, bottom: 5 }}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="year" tick={{ fontSize: 11 }} />
+              <YAxis label={{ value: 'per 100k', angle: -90, position: 'insideLeft', offset: -5, fontSize: 11 }} tick={{ fontSize: 11 }} />
+              <Tooltip formatter={(v: any) => [`${v}`, '']} />
+              <Legend wrapperStyle={{ fontSize: 11 }} />
+              {AGE_LABELS_5Y.map((age, i) => (
+                <Line
+                  key={age}
+                  type="monotone"
+                  dataKey={age}
+                  stroke={AGE_COLORS[i % AGE_COLORS.length]}
+                  dot={false}
+                  strokeWidth={2}
+                  activeDot={{ r: 4 }}
+                />
+              ))}
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
+
+      {/* === Bar Graph: NTM Incidence by Age Group — per Health Zone & Year === */}
+      <div className="comparison-row">
+        <h3 className="section-title">NTM Incidence by Age Group — Health Zone &amp; Year (Bar Graph)</h3>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '16px', padding: '12px', background: '#f8f9fa', borderRadius: '8px', flexWrap: 'wrap' }}>
+          <div>
+            <label style={{ fontWeight: 600, fontSize: '14px', marginRight: 8 }}>Pattern:</label>
+            <select
+              value={lineChartPattern}
+              onChange={e => setLineChartPattern(e.target.value as 'union' | 'inter')}
+              style={{ fontSize: '14px', padding: '4px 10px', borderRadius: '6px', border: '1px solid #d1d5db', cursor: 'pointer' }}
+            >
+              <option value="union">Union (2∪3)</option>
+              <option value="inter">Intersection (2∩3)</option>
+            </select>
+          </div>
+          <div>
+            <label style={{ fontWeight: 600, fontSize: '14px', marginRight: 8 }}>Health Zone:</label>
+            <select
+              value={selectedZoneBarZone}
+              onChange={e => setSelectedZoneBarZone(e.target.value)}
+              style={{ fontSize: '14px', padding: '4px 10px', borderRadius: '6px', border: '1px solid #d1d5db', cursor: 'pointer' }}
+            >
+              <option value="All">All Zones</option>
+              {Array.from({ length: 13 }, (_, i) => i + 1).map(z => (
+                <option key={z} value={String(z)}>Zone {z}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label style={{ fontWeight: 600, fontSize: '14px', marginRight: 8 }}>Year:</label>
+            <select
+              value={selectedRateYear}
+              onChange={e => setSelectedRateYear(parseInt(e.target.value))}
+              style={{ fontSize: '14px', padding: '4px 10px', borderRadius: '6px', border: '1px solid #d1d5db', cursor: 'pointer' }}
+            >
+              {ALL_YEARS.map(y => <option key={y} value={y}>{y}</option>)}
+            </select>
+          </div>
+        </div>
+        <div className="card chart-card">
+          <h5 style={{ marginBottom: '0.5rem' }}>
+            {lineChartPattern === 'union' ? 'Union (2∪3)' : 'Intersection (2∩3)'}
+            &nbsp;— Zone {selectedZoneBarZone} — {selectedRateYear} &nbsp;
+            <span style={{ fontWeight: 400, fontSize: '0.85rem', color: '#6b7280' }}>(rate per 100k · national population reference)</span>
+          </h5>
+          <ResponsiveContainer width="100%" height={380}>
+            <BarChart data={zoneAgeGenderRate} margin={{ top: 10, right: 30, left: 20, bottom: 5 }}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="name" tick={{ fontSize: 11 }} />
+              <YAxis label={{ value: 'per 100k', angle: -90, position: 'insideLeft', offset: -5, fontSize: 11 }} tick={{ fontSize: 11 }} />
+              <Tooltip />
+              <Legend wrapperStyle={{ fontSize: 12 }} />
+              <Bar dataKey="total"  name="Total"  fill="#8884d8" radius={[4, 4, 0, 0]} />
+              <Bar dataKey="male"   name="Male"   fill={MALE_COLOR} radius={[4, 4, 0, 0]} />
+              <Bar dataKey="female" name="Female" fill={FEMALE_COLOR} radius={[4, 4, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
         </div>
       </div>
 
