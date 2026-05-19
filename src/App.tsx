@@ -291,7 +291,264 @@ function ThailandGeoMap({
   );
 }
 
+// ═══════════════════════════════════════════════════
+// SJS / TEN DASHBOARD
+// ═══════════════════════════════════════════════════
+
+interface SjsTenRow {
+  HOSPCODE: string;
+  PID: string;
+  DIAGCODE: string;
+  DATETIME_ADMIT: string;
+}
+
+const SJS_YEARS = [2014, 2015, 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024];
+
+const ZONE_COLORS_13 = [
+  '#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd',
+  '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf',
+  '#aec7e8', '#ffbb78', '#98df8a',
+];
+
+function SjsTenDashboard() {
+  const [sjsData, setSjsData] = useState<SjsTenRow[]>([]);
+  const [hospZoneMap, setHospZoneMap] = useState<Map<string, string>>(new Map());
+  const [loading, setLoading] = useState(true);
+  const [excludedZones, setExcludedZones] = useState<Set<string>>(new Set());
+  const [lineMetric, setLineMetric] = useState<'visits' | 'patients'>('visits');
+
+  useEffect(() => {
+    const load = async () => {
+      const hospRes = await fetch('./hospitals.csv');
+      const hospText = await hospRes.text();
+      const hospResult = Papa.parse(hospText, { header: true, skipEmptyLines: true });
+      const zoneMap = new Map<string, string>();
+      (hospResult.data as any[]).forEach((row: any) => {
+        const code = String(row.hospcode || '').replace(/"/g, '').trim();
+        const zone = String(row.zone_code || '').replace(/"/g, '').trim();
+        if (code && zone && zone !== '0') zoneMap.set(code, zone);
+      });
+      setHospZoneMap(zoneMap);
+
+      const sjsRes = await fetch('./sjs-ten-ipd.csv');
+      const sjsText = await sjsRes.text();
+      const sjsResult = Papa.parse(sjsText, { header: true, skipEmptyLines: true });
+      setSjsData(sjsResult.data as SjsTenRow[]);
+      setLoading(false);
+    };
+    load();
+  }, []);
+
+  const allZones = useMemo(() => {
+    const zoneSet = new Set<string>();
+    sjsData.forEach(d => {
+      const s = String(d.HOSPCODE).trim();
+      const zone = hospZoneMap.get(s) || hospZoneMap.get(s.padStart(5, '0')) || '';
+      if (zone && zone !== '0') zoneSet.add(zone);
+    });
+    return Array.from(zoneSet).sort((a, b) => parseInt(a) - parseInt(b));
+  }, [sjsData, hospZoneMap]);
+
+  const grouped = useMemo(() => {
+    const g: Record<number, Record<string, { visits: number; pids: Set<string> }>> = {};
+    SJS_YEARS.forEach(y => { g[y] = {}; });
+    sjsData.forEach(d => {
+      const y = parseInt(String(d.DATETIME_ADMIT || '').substring(0, 4), 10);
+      if (!SJS_YEARS.includes(y)) return;
+      const s = String(d.HOSPCODE).trim();
+      const zone = hospZoneMap.get(s) || hospZoneMap.get(s.padStart(5, '0')) || '';
+      if (!zone || zone === '0') return;
+      if (!g[y][zone]) g[y][zone] = { visits: 0, pids: new Set() };
+      g[y][zone].visits++;
+      g[y][zone].pids.add(`${d.HOSPCODE}|${d.PID}`);
+    });
+    return g;
+  }, [sjsData, hospZoneMap]);
+
+  const barData = useMemo(() => {
+    return SJS_YEARS.map(year => {
+      let visits = 0;
+      const pids = new Set<string>();
+      sjsData.forEach(d => {
+        const y = parseInt(String(d.DATETIME_ADMIT || '').substring(0, 4), 10);
+        if (y !== year) return;
+        visits++;
+        pids.add(`${d.HOSPCODE}|${d.PID}`);
+      });
+      return { year: String(year), visits, patients: pids.size };
+    });
+  }, [sjsData]);
+
+  const lineData = useMemo(() => {
+    return SJS_YEARS.map(year => {
+      const entry: Record<string, any> = { year };
+      allZones.forEach(zone => {
+        const val = grouped[year]?.[zone];
+        entry[`Zone ${zone}`] = val ? (lineMetric === 'visits' ? val.visits : val.pids.size) : 0;
+      });
+      return entry;
+    });
+  }, [grouped, allZones, lineMetric]);
+
+  const toggleZone = (zone: string) => {
+    setExcludedZones(prev => {
+      const next = new Set(prev);
+      if (next.has(zone)) next.delete(zone); else next.add(zone);
+      return next;
+    });
+  };
+
+  const visibleZones = allZones.filter(z => !excludedZones.has(z));
+
+  const totalVisits = barData.reduce((s, d) => s + d.visits, 0);
+  const totalPatients = useMemo(() => {
+    const pids = new Set<string>();
+    sjsData.forEach(d => {
+      const y = parseInt(String(d.DATETIME_ADMIT || '').substring(0, 4), 10);
+      if (SJS_YEARS.includes(y)) pids.add(`${d.HOSPCODE}|${d.PID}`);
+    });
+    return pids.size;
+  }, [sjsData]);
+
+  if (loading) return <div className="loading">Loading SJS/TEN data…</div>;
+
+  return (
+    <div className="dashboard-container">
+      <h1 className="title">SJS / TEN IPD Dashboard (ICD-10: L51.1, L51.2)</h1>
+
+      {/* Summary card */}
+      <div className="card" style={{ marginBottom: '2rem', background: 'linear-gradient(135deg, #fff7ed 0%, #fef3c7 100%)', borderLeft: '5px solid #f59e0b' }}>
+        <h2 style={{ margin: '0 0 0.75rem 0', color: '#b45309', fontSize: '1.15rem', fontWeight: 700 }}>
+          📋 Stevens-Johnson Syndrome (SJS) &amp; Toxic Epidermal Necrolysis (TEN) — IPD Data
+        </h2>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '1rem' }}>
+          {([
+            { label: 'Total Visits (2014–2024)', value: totalVisits.toLocaleString(), color: '#f97316' },
+            { label: 'Unique Patients', value: totalPatients.toLocaleString(), color: '#3b82f6' },
+            { label: 'Years Covered', value: '11 years', color: '#10b981' },
+            { label: 'Zones Available', value: String(allZones.length), color: '#8b5cf6' },
+          ] as { label: string; value: string; color: string }[]).map(item => (
+            <div key={item.label} style={{ padding: '0.75rem 1rem', background: 'rgba(255,255,255,0.8)', borderRadius: '8px', borderTop: `3px solid ${item.color}` }}>
+              <div style={{ fontSize: '1.5rem', fontWeight: 800, color: item.color }}>{item.value}</div>
+              <div style={{ fontSize: '0.82rem', color: '#6b7280', marginTop: 2 }}>{item.label}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Bar Chart: visits + patients by year */}
+      <div className="comparison-row">
+        <h3 className="section-title">Visit Count &amp; Unique Patients by Year (2014–2024)</h3>
+        <div className="card chart-card">
+          <ResponsiveContainer width="100%" height={400}>
+            <BarChart data={barData} margin={{ top: 24, right: 30, left: 20, bottom: 5 }}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="year" tick={{ fontSize: 12 }} />
+              <YAxis tick={{ fontSize: 11 }} />
+              <Tooltip />
+              <Legend />
+              <Bar dataKey="visits" name="Visit Count" fill="#f97316" radius={[4, 4, 0, 0]}>
+                <LabelList dataKey="visits" position="top" style={{ fontSize: 10, fill: '#374151' }} />
+              </Bar>
+              <Bar dataKey="patients" name="Unique Patients (HOSPCODE+PID)" fill="#3b82f6" radius={[4, 4, 0, 0]}>
+                <LabelList dataKey="patients" position="top" style={{ fontSize: 10, fill: '#374151' }} />
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
+
+      {/* Line Chart: by zone */}
+      <div className="comparison-row">
+        <h3 className="section-title">Trend by Zone Code (2014–2024)</h3>
+
+        {/* Metric selector */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '12px', padding: '10px 14px', background: '#f8f9fa', borderRadius: '8px', flexWrap: 'wrap' }}>
+          <div>
+            <label style={{ fontWeight: 600, fontSize: '14px', marginRight: 8 }}>Metric:</label>
+            <select
+              value={lineMetric}
+              onChange={e => setLineMetric(e.target.value as 'visits' | 'patients')}
+              style={{ fontSize: '14px', padding: '4px 10px', borderRadius: '6px', border: '1px solid #d1d5db', cursor: 'pointer' }}
+            >
+              <option value="visits">Visit Count</option>
+              <option value="patients">Unique Patients</option>
+            </select>
+          </div>
+          <span style={{ fontSize: '12px', color: '#6b7280' }}>
+            คลิกปุ่ม Zone ด้านล่างเพื่อ Include / Exclude zone จากกราฟ
+          </span>
+        </div>
+
+        {/* Zone toggle buttons */}
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '16px' }}>
+          <button
+            onClick={() => setExcludedZones(new Set())}
+            style={{ padding: '5px 14px', borderRadius: '20px', border: '2px solid #374151', background: '#374151', color: 'white', cursor: 'pointer', fontSize: '12px', fontWeight: 600 }}
+          >
+            All On
+          </button>
+          <button
+            onClick={() => setExcludedZones(new Set(allZones))}
+            style={{ padding: '5px 14px', borderRadius: '20px', border: '2px solid #9ca3af', background: 'white', color: '#9ca3af', cursor: 'pointer', fontSize: '12px', fontWeight: 600 }}
+          >
+            All Off
+          </button>
+          {allZones.map((zone, i) => {
+            const isActive = !excludedZones.has(zone);
+            const color = ZONE_COLORS_13[i % ZONE_COLORS_13.length];
+            return (
+              <button
+                key={zone}
+                onClick={() => toggleZone(zone)}
+                style={{
+                  padding: '5px 14px',
+                  borderRadius: '20px',
+                  border: `2px solid ${color}`,
+                  background: isActive ? color : 'white',
+                  color: isActive ? 'white' : color,
+                  cursor: 'pointer',
+                  fontSize: '13px',
+                  fontWeight: 600,
+                  transition: 'all 0.15s',
+                  opacity: isActive ? 1 : 0.55,
+                }}
+              >
+                Zone {zone}
+              </button>
+            );
+          })}
+        </div>
+
+        <div className="card chart-card">
+          <ResponsiveContainer width="100%" height={460}>
+            <LineChart data={lineData} margin={{ top: 10, right: 30, left: 20, bottom: 5 }}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="year" tick={{ fontSize: 11 }} />
+              <YAxis tick={{ fontSize: 11 }} />
+              <Tooltip />
+              <Legend wrapperStyle={{ fontSize: 11 }} />
+              {visibleZones.map(zone => (
+                <Line
+                  key={zone}
+                  type="monotone"
+                  dataKey={`Zone ${zone}`}
+                  stroke={ZONE_COLORS_13[allZones.indexOf(zone) % ZONE_COLORS_13.length]}
+                  dot={{ r: 4 }}
+                  strokeWidth={2}
+                  activeDot={{ r: 6 }}
+                />
+              ))}
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
+  const [activeTab, setActiveTab] = useState<'ntm' | 'sjsten'>('ntm');
   const [rawData, setRawData] = useState<EpisodeData[]>([]);
   const [loading, setLoading] = useState(true);
   
@@ -655,8 +912,6 @@ export default function App() {
     return { first, most };
   }, [rawData]);
 
-  if (loading) return <div className="loading">Comparing Patterns...</div>;
-
   const RenderComparison = ({ title, dataUnion, dataInter, layout = 'horizontal' as 'horizontal' | 'vertical' }: any) => (
     <div className="comparison-row">
       <h3 className="section-title">{title}</h3>
@@ -705,9 +960,40 @@ export default function App() {
     </div>
   );
 
+  const tabNav = (
+    <div style={{ background: '#1e293b', position: 'sticky', top: 0, zIndex: 100, boxShadow: '0 2px 8px rgba(0,0,0,0.18)' }}>
+      <div style={{ display: 'flex', padding: '0 24px' }}>
+        {(['ntm', 'sjsten'] as const).map(key => (
+          <button
+            key={key}
+            onClick={() => setActiveTab(key)}
+            style={{
+              padding: '14px 28px',
+              background: 'none',
+              border: 'none',
+              borderBottom: activeTab === key ? '3px solid #f97316' : '3px solid transparent',
+              color: activeTab === key ? '#f97316' : '#94a3b8',
+              fontWeight: 700,
+              fontSize: '15px',
+              cursor: 'pointer',
+              transition: 'color 0.15s',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {key === 'ntm' ? 'NTM (A31)' : 'SJS / TEN'}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+
   return (
-    <div className="dashboard-container">
-      <h1 className="title">NTM (A31) Clinical Comparison Dashboard</h1>
+    <div>
+      {tabNav}
+      {activeTab === 'ntm' && (
+        loading ? <div className="loading">Loading NTM data…</div> :
+        <div className="dashboard-container">
+          <h1 className="title">NTM (A31) Clinical Comparison Dashboard</h1>
 
       {/* === Info / Description Card === */}
       <div className="card" style={{ marginBottom: '2rem', background: 'linear-gradient(135deg, #eef2ff 0%, #f0f9ff 100%)', borderLeft: '5px solid var(--primary)' }}>
@@ -1119,6 +1405,9 @@ export default function App() {
           })}
         </div>
       </div>
+        </div>
+      )}
+      {activeTab === 'sjsten' && <SjsTenDashboard />}
     </div>
   );
 }
