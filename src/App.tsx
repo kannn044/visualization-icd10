@@ -425,7 +425,7 @@ function SjsTenDashboard() {
           {([
             { label: 'Total Visits (2014–2024)', value: totalVisits.toLocaleString(), color: '#f97316' },
             { label: 'Unique Patients', value: totalPatients.toLocaleString(), color: '#3b82f6' },
-            { label: 'Years Covered', value: '11 years', color: '#10b981' },
+            { label: 'Years Covered', value: '10 years', color: '#10b981' },
             { label: 'Zones Available', value: String(allZones.length), color: '#8b5cf6' },
           ] as { label: string; value: string; color: string }[]).map(item => (
             <div key={item.label} style={{ padding: '0.75rem 1rem', background: 'rgba(255,255,255,0.8)', borderRadius: '8px', borderTop: `3px solid ${item.color}` }}>
