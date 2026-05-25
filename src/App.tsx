@@ -302,6 +302,14 @@ interface SjsTenRow {
   DATETIME_ADMIT: string;
 }
 
+interface SjsDrugRow {
+  HOSPCODE: string;
+  PID: string;
+  DIAGCODE: string;
+  DATETIME_ADMIT: string;
+  DNAME: string;
+}
+
 const SJS_YEARS = [2014, 2015, 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024];
 
 const ZONE_COLORS_13 = [
@@ -316,6 +324,9 @@ function SjsTenDashboard() {
   const [loading, setLoading] = useState(true);
   const [excludedZones, setExcludedZones] = useState<Set<string>>(new Set());
   const [lineMetric, setLineMetric] = useState<'visits' | 'patients'>('visits');
+  const [drugData, setDrugData] = useState<SjsDrugRow[]>([]);
+  const [drugYear, setDrugYear] = useState<number>(2018);
+  const [topN, setTopN] = useState<number>(20);
 
   useEffect(() => {
     const load = async () => {
@@ -334,6 +345,12 @@ function SjsTenDashboard() {
       const sjsText = await sjsRes.text();
       const sjsResult = Papa.parse(sjsText, { header: true, skipEmptyLines: true });
       setSjsData(sjsResult.data as SjsTenRow[]);
+
+      const drugRes = await fetch('./sjs-ten-ipd-drug.csv');
+      const drugText = await drugRes.text();
+      const drugResult = Papa.parse(drugText, { header: true, skipEmptyLines: true });
+      setDrugData(drugResult.data as SjsDrugRow[]);
+
       setLoading(false);
     };
     load();
@@ -401,6 +418,37 @@ function SjsTenDashboard() {
   const visibleZones = allZones.filter(z => !excludedZones.has(z));
 
   const totalVisits = barData.reduce((s, d) => s + d.visits, 0);
+
+  const drugYears = useMemo(() => {
+    const years = new Set<number>();
+    drugData.forEach(row => {
+      const y = parseInt(String(row.DATETIME_ADMIT || '').substring(0, 4), 10);
+      if (!isNaN(y) && y > 2000 && y < 2100) years.add(y);
+    });
+    return Array.from(years).sort();
+  }, [drugData]);
+
+  const drugChartData = useMemo(() => {
+    const drugPatients = new Map<string, Set<string>>();
+    drugData.forEach(row => {
+      const y = parseInt(String(row.DATETIME_ADMIT || '').substring(0, 4), 10);
+      if (y !== drugYear) return;
+      const pid = `${row.HOSPCODE}|${row.PID}`;
+      const drugs = String(row.DNAME || '').split(',').map(d => d.trim()).filter(Boolean);
+      const seen = new Set<string>();
+      drugs.forEach(drug => {
+        if (seen.has(drug)) return;
+        seen.add(drug);
+        if (!drugPatients.has(drug)) drugPatients.set(drug, new Set());
+        drugPatients.get(drug)!.add(pid);
+      });
+    });
+    return Array.from(drugPatients.entries())
+      .map(([drug, pids]) => ({ drug, patients: pids.size }))
+      .sort((a, b) => b.patients - a.patients)
+      .slice(0, topN);
+  }, [drugData, drugYear, topN]);
+
   const totalPatients = useMemo(() => {
     const pids = new Set<string>();
     sjsData.forEach(d => {
@@ -541,6 +589,59 @@ function SjsTenDashboard() {
               ))}
             </LineChart>
           </ResponsiveContainer>
+        </div>
+      </div>
+
+      {/* Drug Patient Count Bar Chart */}
+      <div className="comparison-row">
+        <h3 className="section-title">จำนวนผู้ป่วย (unique HOSPCODE+PID) ต่อปี ต่อยา — จาก sjs-ten-ipd-drug</h3>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '12px', padding: '10px 14px', background: '#f8f9fa', borderRadius: '8px', flexWrap: 'wrap' }}>
+          <div>
+            <label style={{ fontWeight: 600, fontSize: '14px', marginRight: 8 }}>ปี (DATETIME_ADMIT):</label>
+            <select
+              value={drugYear}
+              onChange={e => setDrugYear(parseInt(e.target.value))}
+              style={{ fontSize: '14px', padding: '4px 10px', borderRadius: '6px', border: '1px solid #d1d5db', cursor: 'pointer' }}
+            >
+              {drugYears.map(y => <option key={y} value={y}>{y}</option>)}
+            </select>
+          </div>
+          <div>
+            <label style={{ fontWeight: 600, fontSize: '14px', marginRight: 8 }}>แสดง Top:</label>
+            <select
+              value={topN}
+              onChange={e => setTopN(parseInt(e.target.value))}
+              style={{ fontSize: '14px', padding: '4px 10px', borderRadius: '6px', border: '1px solid #d1d5db', cursor: 'pointer' }}
+            >
+              {[10, 15, 20, 30, 50].map(n => <option key={n} value={n}>{n} ยา</option>)}
+            </select>
+          </div>
+          <span style={{ fontSize: '12px', color: '#6b7280' }}>
+            นับจำนวนผู้ป่วยไม่ซ้ำ (unique HOSPCODE+PID) ต่อชื่อยา ในปีที่เลือก
+          </span>
+        </div>
+
+        <div className="card chart-card">
+          {drugChartData.length === 0 ? (
+            <div style={{ textAlign: 'center', color: '#9ca3af', padding: '2rem' }}>ไม่มีข้อมูลสำหรับปีที่เลือก</div>
+          ) : (
+            <ResponsiveContainer width="100%" height={Math.max(400, drugChartData.length * 28)}>
+              <BarChart
+                data={drugChartData}
+                layout="vertical"
+                margin={{ top: 8, right: 60, left: 10, bottom: 8 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+                <XAxis type="number" tick={{ fontSize: 11 }} label={{ value: 'จำนวนผู้ป่วย (คน)', position: 'insideBottomRight', offset: -10, fontSize: 11, fill: '#6b7280' }} />
+                <YAxis type="category" dataKey="drug" width={200} tick={{ fontSize: 11 }} interval={0} />
+                <Tooltip formatter={(val) => [`${Number(val).toLocaleString()} คน`, 'ผู้ป่วย']} />
+                <Bar dataKey="patients" name="ผู้ป่วย (unique)" fill="#6366f1" radius={[0, 4, 4, 0]}>
+                  <LabelList dataKey="patients" position="right" style={{ fontSize: 11, fill: '#374151' }} />
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          )}
         </div>
       </div>
     </div>
