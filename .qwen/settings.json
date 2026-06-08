@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(raceroster.com)",
+      "Bash(curl *)",
+      "WebFetch(www.google.com)",
+      "WebFetch(disneyrun.com)"
+    ]
+  },
+  "$version": 4
+}

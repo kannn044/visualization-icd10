@@ -310,6 +310,86 @@ interface SjsDrugRow {
   DNAME: string;
 }
 
+interface SjsDrugVisitRow {
+  HOSPCODE: string;
+  PID: string;
+  DIAGCODE: string;
+  DATETIME_ADMIT: string;
+  DIDSTD: string;
+  DNAME: string;
+  DATE_SERV: string;
+  visit_count: string;
+}
+
+// ── Drug group classifiers (dictionary-based, per ChatGPT analysis) ──────────
+const NSAID_PATTERNS: [string, RegExp][] = [
+  ['Ibuprofen',      /\bibuprofen\b|\bbrufen\b|\bnurofen\b|\badvil\b|\bmotrin\b/i],
+  ['Diclofenac',     /\bdiclofenac\b|\bvoltaren\b|\bcataflam\b|\bvoveran\b/i],
+  ['Mefenamic acid', /\bmefenamic\b|\bponstan\b|\bponstel\b|\bmefenac\b/i],
+  ['Naproxen',       /\bnaproxen\w*|\bnaprosyn\b|\baleve\b/i],
+  ['Piroxicam',      /\bpiroxicam\b|\bfeldene\b/i],
+  ['Indomethacin',   /\bindometha?cin\b|\bindocid\b/i],
+  ['Meloxicam',      /\bmeloxicam\b|\bmobic\b/i],
+  ['Celecoxib',      /\bcelecoxib\b|\bcelebrex\b/i],
+  ['Etoricoxib',     /\betoricoxib\b|\barcoxia\b/i],
+  ['Ketorolac',      /\bketorolac\b|\btoradol\b/i],
+  ['Ketoprofen',     /\bketoprofen\b|\bprofenid\b|\borudis\b/i],
+  ['Parecoxib',      /\bparecoxib\b|\bdynastat\b/i],
+  ['Tenoxicam',      /\btenoxicam\b|\btilcotil\b/i],
+  ['Nimesulide',     /\bnimesulide\b|\bnimulid\b/i],
+  ['Aceclofenac',    /\baceclofenac\b/i],
+  ['Aspirin / ASA',  /\baspirin\b|\baspent\b|\bacetylsalicylic\b/i],
+];
+
+const ANTIBIOTIC_PATTERNS: [string, RegExp][] = [
+  ['Amoxicillin',               /\bamox(?:i|y)?cillin\w*|\bamoxil\b/i],
+  ['Amoxicillin+Clavulanate',   /\bco[-\s]?amoxiclav\b|amox[yi]?\s*clav|augmentin|clavulan\w*/i],
+  ['Dicloxacillin',             /\bdicloxacillin\w*/i],
+  ['Cloxacillin',               /\bcloxacillin\w*/i],
+  ['Penicillin V',              /\bpenicillin\s*v\b|\bphenoxymethyl/i],
+  ['Penicillin G / Benzathine', /\bpenicillin\s*g\b|\bbenzylpenicillin\b|\bbenzathine\b/i],
+  ['Ceftriaxone',               /\bceftriaxone\w*|\bceftriazone\w*|\brocephin\b/i],
+  ['Cefazolin',                 /\bcefazolin\w*/i],
+  ['Cephalexin',                /\bcephale?xin\w*/i],
+  ['Cefdinir',                  /\bcefdinir\w*/i],
+  ['Ceftazidime',               /\bceftazidime\w*/i],
+  ['Cefixime',                  /\bcefixime\w*/i],
+  ['Cefotaxime',                /\bcefotaxime\w*/i],
+  ['Cefuroxime',                /\bcefuroxime\w*/i],
+  ['Norfloxacin',               /\bnorfloxacin\w*|\bnoroxin\b/i],
+  ['Ciprofloxacin',             /\bciprofloxacin\w*|\bciproxin\b|\bciprobay\b/i],
+  ['Levofloxacin',              /\blevofloxacin\w*|\btavanic\b|\bcravit\b/i],
+  ['Moxifloxacin',              /\bmoxifloxacin\w*/i],
+  ['Ofloxacin',                 /\bofloxacin\w*/i],
+  ['Roxithromycin',             /\broxithromycin\w*|\broxitromycin\w*|\brulid\b/i],
+  ['Erythromycin',              /\berythromycin\w*/i],
+  ['Azithromycin',              /\bazithromycin\w*|\bzithromax\b/i],
+  ['Clarithromycin',            /\bclarithromycin\w*|\bclarithomycin\w*|\bklacid\b/i],
+  ['Clindamycin',               /\bclindamycin\w*/i],
+  ['Doxycycline',               /\bdoxycycline\w*|\bvibramycin\b/i],
+  ['Metronidazole',             /\bmetronidazole\w*|\bflagyl\b/i],
+  ['Co-trimoxazole / TMP-SMX',  /\bcotrimoxazole\b|\bco[-\s]?trimoxazole\b|bactrim|septrin/i],
+  ['Chloramphenicol',           /\bchloramphenicol\w*/i],
+  ['Neomycin',                  /\bneomycin\w*/i],
+  ['Mupirocin',                 /\bmupirocin\w*|\bbactroban\b/i],
+  ['Vancomycin',                /\bvancomycin\w*/i],
+  ['Meropenem',                 /\bmeropenem\w*/i],
+  ['Gentamicin',                /\bgentamicin\w*/i],
+  ['Tobramycin',                /\btobramycin\w*/i],
+  ['Amikacin',                  /\bamikacin\w*/i],
+  ['Lincomycin',                /\blincomycin\w*/i],
+  ['Fusidic acid',              /\bfusidic\b|\bfucidin\b/i],
+  ['Silver sulfadiazine',       /\bsilver\s*sul[fp]/i],
+];
+
+function classifyDrug(name: string, patterns: [string, RegExp][]): string | null {
+  const lower = name.toLowerCase();
+  for (const [group, re] of patterns) {
+    if (re.test(lower)) return group;
+  }
+  return null;
+}
+
 const SJS_YEARS = [2014, 2015, 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024];
 
 const ZONE_COLORS_13 = [
@@ -327,34 +407,38 @@ function SjsTenDashboard() {
   const [drugData, setDrugData] = useState<SjsDrugRow[]>([]);
   const [drugYear, setDrugYear] = useState<number>(2018);
   const [topN, setTopN] = useState<number>(20);
+  const [drugVisitData, setDrugVisitData] = useState<SjsDrugVisitRow[]>([]);
+  const [drugVisitYear, setDrugVisitYear] = useState<number>(2020);
+
+  const [sjsDataLoaded, setSjsDataLoaded] = useState(false);
 
   useEffect(() => {
+    if (sjsDataLoaded) return;
+    setSjsDataLoaded(true);
     const load = async () => {
-      const hospRes = await fetch('./hospitals.csv');
-      const hospText = await hospRes.text();
-      const hospResult = Papa.parse(hospText, { header: true, skipEmptyLines: true });
-      const zoneMap = new Map<string, string>();
-      (hospResult.data as any[]).forEach((row: any) => {
-        const code = String(row.hospcode || '').replace(/"/g, '').trim();
-        const zone = String(row.zone_code || '').replace(/"/g, '').trim();
-        if (code && zone && zone !== '0') zoneMap.set(code, zone);
-      });
-      setHospZoneMap(zoneMap);
+      const hospRes = await fetch('./hosp-zones.json');
+      const zoneMapData = await hospRes.json();
+      setHospZoneMap(new Map(Object.entries(zoneMapData)));
 
       const sjsRes = await fetch('./sjs-ten-ipd.csv');
       const sjsText = await sjsRes.text();
       const sjsResult = Papa.parse(sjsText, { header: true, skipEmptyLines: true });
       setSjsData(sjsResult.data as SjsTenRow[]);
 
-      const drugRes = await fetch('./sjs-ten-ipd-drug.csv');
+      const drugRes = await fetch('./sjs-ten-ipd-drug-thin.csv');
       const drugText = await drugRes.text();
       const drugResult = Papa.parse(drugText, { header: true, skipEmptyLines: true });
       setDrugData(drugResult.data as SjsDrugRow[]);
 
+      const drugVisitRes = await fetch('./sjs-ten-ipd-drug-visit-thin.csv');
+      const drugVisitText = await drugVisitRes.text();
+      const drugVisitResult = Papa.parse(drugVisitText, { header: true, skipEmptyLines: true });
+      setDrugVisitData(drugVisitResult.data as SjsDrugVisitRow[]);
+
       setLoading(false);
     };
     load();
-  }, []);
+  }, [sjsDataLoaded]);
 
   const allZones = useMemo(() => {
     const zoneSet = new Set<string>();
@@ -449,6 +533,48 @@ function SjsTenDashboard() {
       .slice(0, topN);
   }, [drugData, drugYear, topN]);
 
+  const nsaidGroupData = useMemo(() => {
+    const groupPats = new Map<string, Set<string>>();
+    drugData.forEach(row => {
+      const y = parseInt(String(row.DATETIME_ADMIT || '').substring(0, 4), 10);
+      if (y !== drugYear) return;
+      const pid = `${row.HOSPCODE}|${row.PID}`;
+      const drugs = String(row.DNAME || '').split(',').map(d => d.trim()).filter(Boolean);
+      const seenGroups = new Set<string>();
+      drugs.forEach(drug => {
+        const group = classifyDrug(drug, NSAID_PATTERNS);
+        if (!group || seenGroups.has(group)) return;
+        seenGroups.add(group);
+        if (!groupPats.has(group)) groupPats.set(group, new Set());
+        groupPats.get(group)!.add(pid);
+      });
+    });
+    return Array.from(groupPats.entries())
+      .map(([group, pids]) => ({ group, patients: pids.size }))
+      .sort((a, b) => b.patients - a.patients);
+  }, [drugData, drugYear]);
+
+  const antibioticGroupData = useMemo(() => {
+    const groupPats = new Map<string, Set<string>>();
+    drugData.forEach(row => {
+      const y = parseInt(String(row.DATETIME_ADMIT || '').substring(0, 4), 10);
+      if (y !== drugYear) return;
+      const pid = `${row.HOSPCODE}|${row.PID}`;
+      const drugs = String(row.DNAME || '').split(',').map(d => d.trim()).filter(Boolean);
+      const seenGroups = new Set<string>();
+      drugs.forEach(drug => {
+        const group = classifyDrug(drug, ANTIBIOTIC_PATTERNS);
+        if (!group || seenGroups.has(group)) return;
+        seenGroups.add(group);
+        if (!groupPats.has(group)) groupPats.set(group, new Set());
+        groupPats.get(group)!.add(pid);
+      });
+    });
+    return Array.from(groupPats.entries())
+      .map(([group, pids]) => ({ group, patients: pids.size }))
+      .sort((a, b) => b.patients - a.patients);
+  }, [drugData, drugYear]);
+
   const totalPatients = useMemo(() => {
     const pids = new Set<string>();
     sjsData.forEach(d => {
@@ -457,6 +583,155 @@ function SjsTenDashboard() {
     });
     return pids.size;
   }, [sjsData]);
+
+  /* ── Repeat patient (visit_count >= 2) computed data ── */
+  const repeatRows = useMemo(() => {
+    return drugVisitData.filter(r => parseInt(String(r.visit_count || '0'), 10) >= 2);
+  }, [drugVisitData]);
+
+  const repeatSummary = useMemo(() => {
+    const uniquePids = new Set<string>();
+    let totalVisitCount = 0;
+    repeatRows.forEach(r => {
+      const pid = `${r.HOSPCODE}|${r.PID}`;
+      uniquePids.add(pid);
+      const vc = parseInt(String(r.visit_count || '0'), 10);
+      totalVisitCount += vc;
+    });
+    const avgVisitCount = uniquePids.size > 0 ? (totalVisitCount / uniquePids.size).toFixed(1) : '0';
+    return {
+      uniquePatients: uniquePids.size,
+      totalVisits: totalVisitCount,
+      avgVisitCount,
+      rows: repeatRows.length,
+    };
+  }, [repeatRows]);
+
+  const visitCountDist = useMemo(() => {
+    const bucket: Record<string, number> = {};
+    repeatRows.forEach(r => {
+      const vc = parseInt(String(r.visit_count || '0'), 10);
+      const key = vc >= 5 ? '5+' : String(vc);
+      if (!bucket[key]) bucket[key] = 0;
+      bucket[key]++;
+    });
+    const order = ['2', '3', '4', '5+'];
+    return order.filter(k => bucket[k]).map(k => ({ visit_count: k, count: bucket[k] }));
+  }, [repeatRows]);
+
+  const repeatDrugYears = useMemo(() => {
+    const years = new Set<number>();
+    repeatRows.forEach(r => {
+      const y = parseInt(String(r.DATETIME_ADMIT || '').substring(0, 4), 10);
+      if (!isNaN(y) && y > 2000 && y < 2100) years.add(y);
+    });
+    return Array.from(years).sort();
+  }, [repeatRows]);
+
+  const repeatDrugChart = useMemo(() => {
+    const drugPatients = new Map<string, Set<string>>();
+    repeatRows.forEach(r => {
+      const drugs = String(r.DNAME || '').split(',').map(d => d.trim()).filter(Boolean);
+      const seen = new Set<string>();
+      drugs.forEach(drug => {
+        if (seen.has(drug)) return;
+        seen.add(drug);
+        const pid = `${r.HOSPCODE}|${r.PID}`;
+        if (!drugPatients.has(drug)) drugPatients.set(drug, new Set());
+        drugPatients.get(drug)!.add(pid);
+      });
+    });
+    return Array.from(drugPatients.entries())
+      .map(([drug, pids]) => ({ drug, patients: pids.size }))
+      .sort((a, b) => b.patients - a.patients)
+      .slice(0, topN);
+  }, [repeatRows, topN]);
+
+  const repeatnsaidGroupData = useMemo(() => {
+    const groupPats = new Map<string, Set<string>>();
+    repeatRows.forEach(r => {
+      const pid = `${r.HOSPCODE}|${r.PID}`;
+      const drugs = String(r.DNAME || '').split(',').map(d => d.trim()).filter(Boolean);
+      const seenGroups = new Set<string>();
+      drugs.forEach(drug => {
+        const group = classifyDrug(drug, NSAID_PATTERNS);
+        if (!group || seenGroups.has(group)) return;
+        seenGroups.add(group);
+        if (!groupPats.has(group)) groupPats.set(group, new Set());
+        groupPats.get(group)!.add(pid);
+      });
+    });
+    return Array.from(groupPats.entries())
+      .map(([group, pids]) => ({ group, patients: pids.size }))
+      .sort((a, b) => b.patients - a.patients);
+  }, [repeatRows]);
+
+  const repeatAntibioticGroupData = useMemo(() => {
+    const groupPats = new Map<string, Set<string>>();
+    repeatRows.forEach(r => {
+      const pid = `${r.HOSPCODE}|${r.PID}`;
+      const drugs = String(r.DNAME || '').split(',').map(d => d.trim()).filter(Boolean);
+      const seenGroups = new Set<string>();
+      drugs.forEach(drug => {
+        const group = classifyDrug(drug, ANTIBIOTIC_PATTERNS);
+        if (!group || seenGroups.has(group)) return;
+        seenGroups.add(group);
+        if (!groupPats.has(group)) groupPats.set(group, new Set());
+        groupPats.get(group)!.add(pid);
+      });
+    });
+    return Array.from(groupPats.entries())
+      .map(([group, pids]) => ({ group, patients: pids.size }))
+      .sort((a, b) => b.patients - a.patients);
+  }, [repeatRows]);
+
+  const repeatYoYTrend = useMemo(() => {
+    const yearMap = new Map<number, Set<string>>();
+    repeatRows.forEach(r => {
+      const y = parseInt(String(r.DATETIME_ADMIT || '').substring(0, 4), 10);
+      if (isNaN(y) || y < 2010 || y > 2030) return;
+      if (!yearMap.has(y)) yearMap.set(y, new Set());
+      yearMap.get(y)!.add(`${r.HOSPCODE}|${r.PID}`);
+    });
+    const minYear = yearMap.size > 0 ? Math.min(...yearMap.keys()) : 2014;
+    const maxYear = yearMap.size > 0 ? Math.max(...yearMap.keys()) : 2024;
+    const years: Array<{ year: string; patients: number; rows: number }> = [];
+    const yearRowMap = new Map<number, number>();
+    repeatRows.forEach(r => {
+      const y = parseInt(String(r.DATETIME_ADMIT || '').substring(0, 4), 10);
+      if (!isNaN(y) && y >= 2010 && y <= 2030) {
+        yearRowMap.set(y, (yearRowMap.get(y) || 0) + 1);
+      }
+    });
+    for (let y = minYear; y <= maxYear; y++) {
+      years.push({
+        year: String(y),
+        patients: yearMap.get(y)?.size || 0,
+        rows: yearRowMap.get(y) || 0,
+      });
+    }
+    return years;
+  }, [repeatRows]);
+
+  const repeatVisitGapStats = useMemo(() => {
+    const gaps: number[] = [];
+    repeatRows.forEach(r => {
+      const dateServ = String(r.DATE_SERV || '').split(',').map(d => d.trim()).filter(Boolean);
+      if (dateServ.length < 2) return;
+      const dates = dateServ.map(d => new Date(d).getTime()).filter(t => !isNaN(t)).sort();
+      if (dates.length < 2) return;
+      const gapMs = dates[dates.length - 1] - dates[0];
+      const gapDays = Math.round(gapMs / (1000 * 60 * 60 * 24));
+      if (gapDays > 0) gaps.push(gapDays);
+    });
+    if (gaps.length === 0) return { median: 0, avg: 0, count: 0, p25: 0, p75: 0 };
+    gaps.sort((a, b) => a - b);
+    const median = gaps[Math.floor(gaps.length / 2)];
+    const avg = Math.round(gaps.reduce((s, v) => s + v, 0) / gaps.length);
+    const p25 = gaps[Math.floor(gaps.length * 0.25)];
+    const p75 = gaps[Math.floor(gaps.length * 0.75)];
+    return { median, avg, count: gaps.length, p25, p75 };
+  }, [repeatRows]);
 
   if (loading) return <div className="loading">Loading SJS/TEN data…</div>;
 
@@ -644,6 +919,208 @@ function SjsTenDashboard() {
           )}
         </div>
       </div>
+
+      {/* NSAID Group Chart */}
+      <div className="comparison-row">
+        <h3 className="section-title">จำนวนผู้ป่วย (unique) จำแนกตามกลุ่ม NSAID — ปี {drugYear}</h3>
+        <div className="card chart-card">
+          {nsaidGroupData.length === 0 ? (
+            <div style={{ textAlign: 'center', color: '#9ca3af', padding: '2rem' }}>ไม่พบยากลุ่ม NSAID ในปีที่เลือก</div>
+          ) : (
+            <ResponsiveContainer width="100%" height={Math.max(300, nsaidGroupData.length * 36)}>
+              <BarChart data={nsaidGroupData} layout="vertical" margin={{ top: 8, right: 60, left: 10, bottom: 8 }}>
+                <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+                <XAxis type="number" tick={{ fontSize: 11 }} label={{ value: 'จำนวนผู้ป่วย (คน)', position: 'insideBottomRight', offset: -10, fontSize: 11, fill: '#6b7280' }} />
+                <YAxis type="category" dataKey="group" width={160} tick={{ fontSize: 11 }} interval={0} />
+                <Tooltip formatter={(val) => [`${Number(val).toLocaleString()} คน`, 'ผู้ป่วย']} />
+                <Bar dataKey="patients" name="ผู้ป่วย (unique)" fill="#ef4444" radius={[0, 4, 4, 0]}>
+                  <LabelList dataKey="patients" position="right" style={{ fontSize: 11, fill: '#374151' }} />
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          )}
+        </div>
+      </div>
+
+      {/* Antibiotic Group Chart */}
+      <div className="comparison-row">
+        <h3 className="section-title">จำนวนผู้ป่วย (unique) จำแนกตามกลุ่ม ยาปฏิชีวนะ (Antibiotics) — ปี {drugYear}</h3>
+        <div className="card chart-card">
+          {antibioticGroupData.length === 0 ? (
+            <div style={{ textAlign: 'center', color: '#9ca3af', padding: '2rem' }}>ไม่พบยาปฏิชีวนะในปีที่เลือก</div>
+          ) : (
+            <ResponsiveContainer width="100%" height={Math.max(300, antibioticGroupData.length * 32)}>
+              <BarChart data={antibioticGroupData} layout="vertical" margin={{ top: 8, right: 60, left: 10, bottom: 8 }}>
+                <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+                <XAxis type="number" tick={{ fontSize: 11 }} label={{ value: 'จำนวนผู้ป่วย (คน)', position: 'insideBottomRight', offset: -10, fontSize: 11, fill: '#6b7280' }} />
+                <YAxis type="category" dataKey="group" width={200} tick={{ fontSize: 11 }} interval={0} />
+                <Tooltip formatter={(val) => [`${Number(val).toLocaleString()} คน`, 'ผู้ป่วย']} />
+                <Bar dataKey="patients" name="ผู้ป่วย (unique)" fill="#10b981" radius={[0, 4, 4, 0]}>
+                  <LabelList dataKey="patients" position="right" style={{ fontSize: 11, fill: '#374151' }} />
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          )}
+        </div>
+      </div>
+
+      {/* ═══════════════════════════════════════════════════
+         REPEAT PATIENT SECTION (visit_count >= 2)
+        ═══════════════════════════════════════════════════ */}
+      <hr style={{ margin: '3rem 0', border: 'none', borderTop: '2px solid #e5e7eb' }} />
+
+      <div className="comparison-row">
+        <h3 className="section-title">Repeat Patients Analysis (visit_count ≥ 2)</h3>
+
+        <div className="card" style={{ marginBottom: '2rem', background: 'linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 100%)', borderLeft: '5px solid #10b981' }}>
+          <h2 style={{ margin: '0 0 0.75rem 0', color: '#065f46', fontSize: '1.15rem', fontWeight: 700 }}>
+            Repeat Patients — Summary (from sjs-ten-ipd-drug-visit.csv)
+          </h2>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem' }}>
+            {([
+              { label: 'Total Rows (vc≥2)', value: repeatSummary.rows.toLocaleString(), color: '#f59e0b' },
+              { label: 'Unique Patients', value: repeatSummary.uniquePatients.toLocaleString(), color: '#3b82f6' },
+              { label: 'Total Visits', value: repeatSummary.totalVisits.toLocaleString(), color: '#f97316' },
+              { label: 'Avg visit_count', value: repeatSummary.avgVisitCount, color: '#8b5cf6' },
+            ] as { label: string; value: string; color: string }[]).map(item => (
+              <div key={item.label} style={{ padding: '0.75rem 1rem', background: 'rgba(255,255,255,0.8)', borderRadius: '8px', borderTop: `3px solid ${item.color}` }}>
+                <div style={{ fontSize: '1.5rem', fontWeight: 800, color: item.color }}>{item.value}</div>
+                <div style={{ fontSize: '0.82rem', color: '#6b7280', marginTop: 2 }}>{item.label}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Chart B: visit_count distribution */}
+        <h4 style={{ margin: '0 0 1rem 0', color: '#374151', fontWeight: 700, fontSize: '1rem' }}>visit_count Distribution</h4>
+        <div className="card chart-card" style={{ marginBottom: '2rem' }}>
+          <ResponsiveContainer width="100%" height={300}>
+            <BarChart data={visitCountDist} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="visit_count" tick={{ fontSize: 12 }} />
+              <YAxis tick={{ fontSize: 11 }} />
+              <Tooltip formatter={(val) => [`${Number(val).toLocaleString()} patients`, 'Count']} />
+              <Legend />
+              <Bar dataKey="count" name="Patients" fill="#f59e0b" radius={[4, 4, 0, 0]}>
+                <LabelList dataKey="count" position="top" style={{ fontSize: 11, fill: '#374151' }} />
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+
+        {/* Chart C: Top drugs in repeat patients */}
+        <h4 style={{ margin: '0 0 1rem 0', color: '#374151', fontWeight: 700, fontSize: '1rem' }}>Top Drugs in Repeat Patients (unique HOSPCODE+PID)</h4>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '12px', padding: '10px 14px', background: '#f8f9fa', borderRadius: '8px', flexWrap: 'wrap' }}>
+          <div>
+            <label style={{ fontWeight: 600, fontSize: '14px', marginRight: 8 }}>Show Top:</label>
+            <select
+              value={topN}
+              onChange={e => setTopN(parseInt(e.target.value))}
+              style={{ fontSize: '14px', padding: '4px 10px', borderRadius: '6px', border: '1px solid #d1d5db', cursor: 'pointer' }}
+            >
+              {[10, 15, 20, 30, 50].map(n => <option key={n} value={n}>{n} drugs</option>)}
+            </select>
+          </div>
+          <span style={{ fontSize: '12px', color: '#6b7280' }}>
+            Count of unique patients (HOSPCODE+PID) per drug name, filtered to visit_count ≥ 2
+          </span>
+        </div>
+        <div className="card chart-card" style={{ marginBottom: '2rem' }}>
+          {repeatDrugChart.length === 0 ? (
+            <div style={{ textAlign: 'center', color: '#9ca3af', padding: '2rem' }}>No data available for repeat patients</div>
+          ) : (
+            <ResponsiveContainer width="100%" height={Math.max(400, repeatDrugChart.length * 28)}>
+              <BarChart data={repeatDrugChart} layout="vertical" margin={{ top: 8, right: 60, left: 10, bottom: 8 }}>
+                <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+                <XAxis type="number" tick={{ fontSize: 11 }} label={{ value: 'Patients (unique)', position: 'insideBottomRight', offset: -10, fontSize: 11, fill: '#6b7280' }} />
+                <YAxis type="category" dataKey="drug" width={240} tick={{ fontSize: 11 }} interval={0} />
+                <Tooltip formatter={(val) => [`${Number(val).toLocaleString()} patients`, 'Patients']} />
+                <Bar dataKey="patients" name="Patients (unique)" fill="#6366f1" radius={[0, 4, 4, 0]}>
+                  <LabelList dataKey="patients" position="right" style={{ fontSize: 11, fill: '#374151' }} />
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          )}
+        </div>
+
+        {/* Chart D: Drug group comparison (NSAID / Antibiotics) */}
+        <h4 style={{ margin: '0 0 1rem 0', color: '#374151', fontWeight: 700, fontSize: '1rem' }}>Drug Group Comparison (NSAID &amp; Antibiotics) — Repeat Patients</h4>
+        <div className="comparison-grid" style={{ marginBottom: '2rem' }}>
+          <div className="card chart-card">
+            <h5>NSAID Groups — Repeat Patients</h5>
+            {repeatnsaidGroupData.length === 0 ? (
+              <div style={{ textAlign: 'center', color: '#9ca3af', padding: '2rem' }}>No NSAID drugs found in repeat patients</div>
+            ) : (
+              <ResponsiveContainer width="100%" height={Math.max(300, repeatnsaidGroupData.length * 36)}>
+                <BarChart data={repeatnsaidGroupData} layout="vertical" margin={{ top: 8, right: 60, left: 10, bottom: 8 }}>
+                  <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+                  <XAxis type="number" tick={{ fontSize: 11 }} />
+                  <YAxis type="category" dataKey="group" width={160} tick={{ fontSize: 11 }} interval={0} />
+                  <Tooltip formatter={(val) => [`${Number(val).toLocaleString()} patients`, 'Patients']} />
+                  <Bar dataKey="patients" name="Patients" fill="#ef4444" radius={[0, 4, 4, 0]}>
+                    <LabelList dataKey="patients" position="right" style={{ fontSize: 11, fill: '#374151' }} />
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            )}
+          </div>
+          <div className="card chart-card">
+            <h5>Antibiotic Groups — Repeat Patients</h5>
+            {repeatAntibioticGroupData.length === 0 ? (
+              <div style={{ textAlign: 'center', color: '#9ca3af', padding: '2rem' }}>No antibiotic drugs found in repeat patients</div>
+            ) : (
+              <ResponsiveContainer width="100%" height={Math.max(300, repeatAntibioticGroupData.length * 32)}>
+                <BarChart data={repeatAntibioticGroupData} layout="vertical" margin={{ top: 8, right: 60, left: 10, bottom: 8 }}>
+                  <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+                  <XAxis type="number" tick={{ fontSize: 11 }} />
+                  <YAxis type="category" dataKey="group" width={200} tick={{ fontSize: 11 }} interval={0} />
+                  <Tooltip formatter={(val) => [`${Number(val).toLocaleString()} patients`, 'Patients']} />
+                  <Bar dataKey="patients" name="Patients" fill="#10b981" radius={[0, 4, 4, 0]}>
+                    <LabelList dataKey="patients" position="right" style={{ fontSize: 11, fill: '#374151' }} />
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            )}
+          </div>
+        </div>
+
+        {/* Chart E: Year-over-year trend */}
+        <h4 style={{ margin: '0 0 1rem 0', color: '#374151', fontWeight: 700, fontSize: '1rem' }}>Year-over-Year Trend — Repeat Patients</h4>
+        <div className="card chart-card" style={{ marginBottom: '2rem' }}>
+          <ResponsiveContainer width="100%" height={350}>
+            <BarChart data={repeatYoYTrend} margin={{ top: 24, right: 30, left: 20, bottom: 5 }}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="year" tick={{ fontSize: 12 }} />
+              <YAxis tick={{ fontSize: 11 }} />
+              <Tooltip />
+              <Legend />
+              <Bar dataKey="rows" name="Records" fill="#f59e0b" radius={[4, 4, 0, 0]}>
+                <LabelList dataKey="rows" position="top" style={{ fontSize: 10, fill: '#374151' }} />
+              </Bar>
+              <Bar dataKey="patients" name="Unique Patients" fill="#3b82f6" radius={[4, 4, 0, 0]}>
+                <LabelList dataKey="patients" position="top" style={{ fontSize: 10, fill: '#374151' }} />
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+
+        {/* Chart F: Time between first and last visit */}
+        <h4 style={{ margin: '0 0 1rem 0', color: '#374151', fontWeight: 700, fontSize: '1rem' }}>Time Between First &amp; Last Visit (from DATE_SERV)</h4>
+        <div className="card" style={{ marginBottom: '2rem', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '1rem' }}>
+          {([
+            { label: 'Patients with gap data', value: repeatVisitGapStats.count.toLocaleString(), color: '#3b82f6' },
+            { label: 'Median gap (days)', value: repeatVisitGapStats.median.toLocaleString(), color: '#10b981' },
+            { label: 'Average gap (days)', value: repeatVisitGapStats.avg.toLocaleString(), color: '#f59e0b' },
+            { label: '25th Percentile (days)', value: repeatVisitGapStats.p25.toLocaleString(), color: '#8b5cf6' },
+            { label: '75th Percentile (days)', value: repeatVisitGapStats.p75.toLocaleString(), color: '#ef4444' },
+          ] as { label: string; value: string; color: string }[]).map(item => (
+            <div key={item.label} style={{ padding: '0.75rem 1rem', background: 'rgba(255,255,255,0.8)', borderRadius: '8px', borderTop: `3px solid ${item.color}`, textAlign: 'center' }}>
+              <div style={{ fontSize: '1.4rem', fontWeight: 800, color: item.color }}>{item.value}</div>
+              <div style={{ fontSize: '0.78rem', color: '#6b7280', marginTop: 2 }}>{item.label}</div>
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }
@@ -652,7 +1129,7 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<'ntm' | 'sjsten'>('ntm');
   const [rawData, setRawData] = useState<EpisodeData[]>([]);
   const [loading, setLoading] = useState(true);
-  
+
   const [viewType, setViewType] = useState<'most_diagcode' | 'first_diagcode' | 'diag2'>('most_diagcode');
   const [diagFilter, setDiagFilter] = useState('All');
   const [genderFilter, setGenderFilter] = useState({ all: true, male: false, female: false });
@@ -664,6 +1141,7 @@ export default function App() {
   const [selectedZoneBarZone, setSelectedZoneBarZone] = useState('All');
   const [lineChartPattern, setLineChartPattern] = useState<'union' | 'inter'>('union');
   const [thailandGeo, setThailandGeo] = useState<any>(null);
+  const [ntmLoadingDone, setNtmLoadingDone] = useState(false);
 
   const handleGenderToggle = (type: 'all' | 'male' | 'female') => {
     if (type === 'all') {
@@ -680,22 +1158,17 @@ export default function App() {
   };
 
   useEffect(() => {
+    if (ntmLoadingDone) return;
+    setNtmLoadingDone(true);
     const fetchCSV = async () => {
-      const addressRes = await fetch('./address.csv');
-      const addressText = await addressRes.text();
-      const addressResult = Papa.parse(addressText, { header: true, dynamicTyping: true, skipEmptyLines: true });
-      const addressMap = new Map();
-      (addressResult.data as AddressData[]).forEach(row => {
-        if (row.changwat && row.province_name) {
-          addressMap.set(String(row.changwat), String(row.province_name));
-          addressMap.set(String(row.province_name), String(row.province_name));
-        }
-      });
+      const addressRes = await fetch('./address-map.json');
+      const addressMapData = await addressRes.json();
+      const addressMap = new Map<string, string>(Object.entries(addressMapData));
 
       const episodeRes = await fetch('./episode_details_10mar2026.csv');
       const episodeText = await episodeRes.text();
       const episodeResult = Papa.parse(episodeText, { header: true, dynamicTyping: true, skipEmptyLines: true });
-      
+
       const data = (episodeResult.data as EpisodeData[]).map(d => {
         const cleanMost = String(d.most_diagcode || '').replace(/"/g, '').trim();
         const cleanFirst = String(d.first_diagcode || '').replace(/"/g, '').trim();
@@ -709,7 +1182,7 @@ export default function App() {
           diag2: (cleanFirst === 'A318' || cleanFirst === 'A319') ? 'A310' : cleanFirst
         };
       });
-      
+
       setRawData(data);
 
       // Load population data for all years in parallel
@@ -720,10 +1193,6 @@ export default function App() {
           const popText = await popRes.text();
           const parsed = Papa.parse(popText, { header: false, dynamicTyping: false, skipEmptyLines: false });
           const rows = parsed.data as string[][];
-          // Identify the national total row purely by numeric threshold:
-          // col[2] = male 0-4 pop (always > 500,000 for Thailand national total)
-          // col[4] = total 0-4 pop (always > 1,000,000 for Thailand national total)
-          // This avoids all Thai string / Unicode normalisation issues.
           const natRow = rows.find(r => {
             const c2 = parseInt((r[2] || '').replace(/,/g, ''), 10);
             const c4 = parseInt((r[4] || '').replace(/,/g, ''), 10);
@@ -737,7 +1206,6 @@ export default function App() {
               popByAge[label] = isNaN(val) ? 0 : val;
             });
           }
-          // Also extract male/female population per age group for gender-specific incidence
           const popByAgeGender: { [ageBin: string]: { m: number; f: number; t: number } } = {};
           if (natRow) {
             AGE_LABELS_5Y.forEach((label, i) => {
@@ -750,14 +1218,6 @@ export default function App() {
               popByAgeGender[label] = { m: isNaN(m) ? 0 : m, f: isNaN(f) ? 0 : f, t: isNaN(t) ? 0 : t };
             });
           }
-          // Province-level total population.
-          // 56-col format (pop2561–pop2566, years 2018–2023) has extra "เกิดปีจันทรคติ" and
-          // "ไม่ทราบ" columns after the age groups so the grand total is at col[55].
-          // All other formats (50, 55, 58 cols) have it at col[49].
-          // pop2563–pop2566 also contain district (อำเภอ) sub-rows whose 2-digit codes
-          // (e.g. district "10" within Bangkok) collide with province codes.  Province rows
-          // always appear BEFORE their districts and have a larger population, so we keep
-          // the MAXIMUM value seen for each code to ensure the province total wins.
           const headerCols = (rows[1] || rows[0] || []).length;
           const grandTotalColIdx = headerCols === 56 ? 55 : 49;
           const provPop: { [code: string]: number } = {};
@@ -781,7 +1241,6 @@ export default function App() {
       popEntries.forEach(([y, , , genderAges]) => { genderPopMap[y as number] = genderAges as { [ageBin: string]: { m: number; f: number; t: number } }; });
       setPopulationByGender(genderPopMap);
 
-      // Fetch Thailand provinces GeoJSON
       try {
         const geoRes = await fetch('https://raw.githubusercontent.com/apisit/thailand.json/master/thailand.json');
         if (geoRes.ok) {
@@ -792,9 +1251,9 @@ export default function App() {
 
       setLoading(false);
     };
-    
+
     fetchCSV();
-  }, []);
+  }, [ntmLoadingDone]);
 
   const getProcessedData = (criteria: 'union' | 'inter') => {
     if (rawData.length === 0) return [];
