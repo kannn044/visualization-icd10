@@ -292,105 +292,35 @@ function ThailandGeoMap({
 }
 
 // ═══════════════════════════════════════════════════
-// SJS / TEN DASHBOARD
+// SJS / TEN DASHBOARD — pre-aggregated from Python, loaded as JSON
 // ═══════════════════════════════════════════════════
 
-interface SjsTenRow {
-  HOSPCODE: string;
-  PID: string;
-  DIAGCODE: string;
-  DATETIME_ADMIT: string;
+interface SjsDrugEntry { drug: string; patients: number; }
+interface SjsGroupEntry { group: string; patients: number; }
+interface SjsBarEntry   { year: string; visits: number; patients: number; }
+interface SjsLineEntry  { year: string; [k: string]: string | number; }
+interface SjsRepeatYoY  { year: string; patients: number; rows: number; }
+interface SjsVCDist     { visit_count: string; count: number; }
+
+interface SjsAggregatedData {
+  summary: { totalVisits: number; totalPatients: number; allZones: string[]; };
+  barData: SjsBarEntry[];
+  lineData: { visits: Record<string, SjsLineEntry>; patients: Record<string, SjsLineEntry>; };
+  drugYears: number[];
+  drugByYear: Record<string, SjsDrugEntry[]>;
+  nsaidByYear: Record<string, SjsGroupEntry[]>;
+  antibioticByYear: Record<string, SjsGroupEntry[]>;
+  repeat: {
+    summary: { uniquePatients: number; totalVisits: number; avgVisitCount: string; rows: number; };
+    visitCountDist: SjsVCDist[];
+    drugYears: number[];
+    drugByYear: Record<string, SjsDrugEntry[]>;
+    nsaidByYear: Record<string, SjsGroupEntry[]>;
+    antibioticByYear: Record<string, SjsGroupEntry[]>;
+    yoYTrend: SjsRepeatYoY[];
+    visitGapStats: { median: number; avg: number; count: number; p25: number; p75: number; };
+  };
 }
-
-interface SjsDrugRow {
-  HOSPCODE: string;
-  PID: string;
-  DIAGCODE: string;
-  DATETIME_ADMIT: string;
-  DNAME: string;
-}
-
-interface SjsDrugVisitRow {
-  HOSPCODE: string;
-  PID: string;
-  DIAGCODE: string;
-  DATETIME_ADMIT: string;
-  DIDSTD: string;
-  DNAME: string;
-  DATE_SERV: string;
-  visit_count: string;
-}
-
-// ── Drug group classifiers (dictionary-based, per ChatGPT analysis) ──────────
-const NSAID_PATTERNS: [string, RegExp][] = [
-  ['Ibuprofen',      /\bibuprofen\b|\bbrufen\b|\bnurofen\b|\badvil\b|\bmotrin\b/i],
-  ['Diclofenac',     /\bdiclofenac\b|\bvoltaren\b|\bcataflam\b|\bvoveran\b/i],
-  ['Mefenamic acid', /\bmefenamic\b|\bponstan\b|\bponstel\b|\bmefenac\b/i],
-  ['Naproxen',       /\bnaproxen\w*|\bnaprosyn\b|\baleve\b/i],
-  ['Piroxicam',      /\bpiroxicam\b|\bfeldene\b/i],
-  ['Indomethacin',   /\bindometha?cin\b|\bindocid\b/i],
-  ['Meloxicam',      /\bmeloxicam\b|\bmobic\b/i],
-  ['Celecoxib',      /\bcelecoxib\b|\bcelebrex\b/i],
-  ['Etoricoxib',     /\betoricoxib\b|\barcoxia\b/i],
-  ['Ketorolac',      /\bketorolac\b|\btoradol\b/i],
-  ['Ketoprofen',     /\bketoprofen\b|\bprofenid\b|\borudis\b/i],
-  ['Parecoxib',      /\bparecoxib\b|\bdynastat\b/i],
-  ['Tenoxicam',      /\btenoxicam\b|\btilcotil\b/i],
-  ['Nimesulide',     /\bnimesulide\b|\bnimulid\b/i],
-  ['Aceclofenac',    /\baceclofenac\b/i],
-  ['Aspirin / ASA',  /\baspirin\b|\baspent\b|\bacetylsalicylic\b/i],
-];
-
-const ANTIBIOTIC_PATTERNS: [string, RegExp][] = [
-  ['Amoxicillin',               /\bamox(?:i|y)?cillin\w*|\bamoxil\b/i],
-  ['Amoxicillin+Clavulanate',   /\bco[-\s]?amoxiclav\b|amox[yi]?\s*clav|augmentin|clavulan\w*/i],
-  ['Dicloxacillin',             /\bdicloxacillin\w*/i],
-  ['Cloxacillin',               /\bcloxacillin\w*/i],
-  ['Penicillin V',              /\bpenicillin\s*v\b|\bphenoxymethyl/i],
-  ['Penicillin G / Benzathine', /\bpenicillin\s*g\b|\bbenzylpenicillin\b|\bbenzathine\b/i],
-  ['Ceftriaxone',               /\bceftriaxone\w*|\bceftriazone\w*|\brocephin\b/i],
-  ['Cefazolin',                 /\bcefazolin\w*/i],
-  ['Cephalexin',                /\bcephale?xin\w*/i],
-  ['Cefdinir',                  /\bcefdinir\w*/i],
-  ['Ceftazidime',               /\bceftazidime\w*/i],
-  ['Cefixime',                  /\bcefixime\w*/i],
-  ['Cefotaxime',                /\bcefotaxime\w*/i],
-  ['Cefuroxime',                /\bcefuroxime\w*/i],
-  ['Norfloxacin',               /\bnorfloxacin\w*|\bnoroxin\b/i],
-  ['Ciprofloxacin',             /\bciprofloxacin\w*|\bciproxin\b|\bciprobay\b/i],
-  ['Levofloxacin',              /\blevofloxacin\w*|\btavanic\b|\bcravit\b/i],
-  ['Moxifloxacin',              /\bmoxifloxacin\w*/i],
-  ['Ofloxacin',                 /\bofloxacin\w*/i],
-  ['Roxithromycin',             /\broxithromycin\w*|\broxitromycin\w*|\brulid\b/i],
-  ['Erythromycin',              /\berythromycin\w*/i],
-  ['Azithromycin',              /\bazithromycin\w*|\bzithromax\b/i],
-  ['Clarithromycin',            /\bclarithromycin\w*|\bclarithomycin\w*|\bklacid\b/i],
-  ['Clindamycin',               /\bclindamycin\w*/i],
-  ['Doxycycline',               /\bdoxycycline\w*|\bvibramycin\b/i],
-  ['Metronidazole',             /\bmetronidazole\w*|\bflagyl\b/i],
-  ['Co-trimoxazole / TMP-SMX',  /\bcotrimoxazole\b|\bco[-\s]?trimoxazole\b|bactrim|septrin/i],
-  ['Chloramphenicol',           /\bchloramphenicol\w*/i],
-  ['Neomycin',                  /\bneomycin\w*/i],
-  ['Mupirocin',                 /\bmupirocin\w*|\bbactroban\b/i],
-  ['Vancomycin',                /\bvancomycin\w*/i],
-  ['Meropenem',                 /\bmeropenem\w*/i],
-  ['Gentamicin',                /\bgentamicin\w*/i],
-  ['Tobramycin',                /\btobramycin\w*/i],
-  ['Amikacin',                  /\bamikacin\w*/i],
-  ['Lincomycin',                /\blincomycin\w*/i],
-  ['Fusidic acid',              /\bfusidic\b|\bfucidin\b/i],
-  ['Silver sulfadiazine',       /\bsilver\s*sul[fp]/i],
-];
-
-function classifyDrug(name: string, patterns: [string, RegExp][]): string | null {
-  const lower = name.toLowerCase();
-  for (const [group, re] of patterns) {
-    if (re.test(lower)) return group;
-  }
-  return null;
-}
-
-const SJS_YEARS = [2014, 2015, 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024];
 
 const ZONE_COLORS_13 = [
   '#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd',
@@ -399,97 +329,38 @@ const ZONE_COLORS_13 = [
 ];
 
 function SjsTenDashboard() {
-  const [sjsData, setSjsData] = useState<SjsTenRow[]>([]);
-  const [hospZoneMap, setHospZoneMap] = useState<Map<string, string>>(new Map());
+  const [aggregatedData, setAggregatedData] = useState<SjsAggregatedData | null>(null);
   const [loading, setLoading] = useState(true);
   const [excludedZones, setExcludedZones] = useState<Set<string>>(new Set());
   const [lineMetric, setLineMetric] = useState<'visits' | 'patients'>('visits');
-  const [drugData, setDrugData] = useState<SjsDrugRow[]>([]);
   const [drugYear, setDrugYear] = useState<number>(2018);
   const [topN, setTopN] = useState<number>(20);
-  const [drugVisitData, setDrugVisitData] = useState<SjsDrugVisitRow[]>([]);
-  const [drugVisitYear, setDrugVisitYear] = useState<number>(2020);
+  const [repeatYear, setRepeatYear] = useState<number | null>(null);
 
   const [sjsDataLoaded, setSjsDataLoaded] = useState(false);
 
   useEffect(() => {
     if (sjsDataLoaded) return;
     setSjsDataLoaded(true);
-    const load = async () => {
-      const hospRes = await fetch('./hosp-zones.json');
-      const zoneMapData = await hospRes.json();
-      setHospZoneMap(new Map(Object.entries(zoneMapData)));
-
-      const sjsRes = await fetch('./sjs-ten-ipd.csv');
-      const sjsText = await sjsRes.text();
-      const sjsResult = Papa.parse(sjsText, { header: true, skipEmptyLines: true });
-      setSjsData(sjsResult.data as SjsTenRow[]);
-
-      const drugRes = await fetch('./sjs-ten-ipd-drug-thin.csv');
-      const drugText = await drugRes.text();
-      const drugResult = Papa.parse(drugText, { header: true, skipEmptyLines: true });
-      setDrugData(drugResult.data as SjsDrugRow[]);
-
-      const drugVisitRes = await fetch('./sjs-ten-ipd-drug-visit-thin.csv');
-      const drugVisitText = await drugVisitRes.text();
-      const drugVisitResult = Papa.parse(drugVisitText, { header: true, skipEmptyLines: true });
-      setDrugVisitData(drugVisitResult.data as SjsDrugVisitRow[]);
-
-      setLoading(false);
-    };
-    load();
+    fetch('./sjs-ten-aggregated.json')
+      .then(r => r.json())
+      .then(data => {
+        setAggregatedData(data);
+        if (data.drugYears.length > 0) setDrugYear(data.drugYears[Math.floor(data.drugYears.length / 2)]);
+        if (data.repeat.drugYears.length > 0) setRepeatYear(data.repeat.drugYears[Math.floor(data.repeat.drugYears.length / 2)]);
+      })
+      .finally(() => setLoading(false));
   }, [sjsDataLoaded]);
 
-  const allZones = useMemo(() => {
-    const zoneSet = new Set<string>();
-    sjsData.forEach(d => {
-      const s = String(d.HOSPCODE).trim();
-      const zone = hospZoneMap.get(s) || hospZoneMap.get(s.padStart(5, '0')) || '';
-      if (zone && zone !== '0') zoneSet.add(zone);
-    });
-    return Array.from(zoneSet).sort((a, b) => parseInt(a) - parseInt(b));
-  }, [sjsData, hospZoneMap]);
+  if (!aggregatedData) return null;
+  const { summary, barData, lineData, drugYears, drugByYear, nsaidByYear, antibioticByYear, repeat } = aggregatedData;
 
-  const grouped = useMemo(() => {
-    const g: Record<number, Record<string, { visits: number; pids: Set<string> }>> = {};
-    SJS_YEARS.forEach(y => { g[y] = {}; });
-    sjsData.forEach(d => {
-      const y = parseInt(String(d.DATETIME_ADMIT || '').substring(0, 4), 10);
-      if (!SJS_YEARS.includes(y)) return;
-      const s = String(d.HOSPCODE).trim();
-      const zone = hospZoneMap.get(s) || hospZoneMap.get(s.padStart(5, '0')) || '';
-      if (!zone || zone === '0') return;
-      if (!g[y][zone]) g[y][zone] = { visits: 0, pids: new Set() };
-      g[y][zone].visits++;
-      g[y][zone].pids.add(`${d.HOSPCODE}|${d.PID}`);
-    });
-    return g;
-  }, [sjsData, hospZoneMap]);
+  const allZones = summary.allZones;
 
-  const barData = useMemo(() => {
-    return SJS_YEARS.map(year => {
-      let visits = 0;
-      const pids = new Set<string>();
-      sjsData.forEach(d => {
-        const y = parseInt(String(d.DATETIME_ADMIT || '').substring(0, 4), 10);
-        if (y !== year) return;
-        visits++;
-        pids.add(`${d.HOSPCODE}|${d.PID}`);
-      });
-      return { year: String(year), visits, patients: pids.size };
-    });
-  }, [sjsData]);
-
-  const lineData = useMemo(() => {
-    return SJS_YEARS.map(year => {
-      const entry: Record<string, any> = { year };
-      allZones.forEach(zone => {
-        const val = grouped[year]?.[zone];
-        entry[`Zone ${zone}`] = val ? (lineMetric === 'visits' ? val.visits : val.pids.size) : 0;
-      });
-      return entry;
-    });
-  }, [grouped, allZones, lineMetric]);
+  const currentLineEntries = lineData[lineMetric];
+  const lineDataArr = Object.values(currentLineEntries)
+    .map(e => e as unknown as SjsLineEntry)
+    .sort((a, b) => Number(String(a.year)) - Number(String(b.year)));
 
   const toggleZone = (zone: string) => {
     setExcludedZones(prev => {
@@ -501,237 +372,38 @@ function SjsTenDashboard() {
 
   const visibleZones = allZones.filter(z => !excludedZones.has(z));
 
-  const totalVisits = barData.reduce((s, d) => s + d.visits, 0);
+  const totalVisits = summary.totalVisits;
+  const totalPatients = summary.totalPatients;
 
-  const drugYears = useMemo(() => {
-    const years = new Set<number>();
-    drugData.forEach(row => {
-      const y = parseInt(String(row.DATETIME_ADMIT || '').substring(0, 4), 10);
-      if (!isNaN(y) && y > 2000 && y < 2100) years.add(y);
-    });
-    return Array.from(years).sort();
-  }, [drugData]);
+  const drugChartData = (drugByYear[String(drugYear)] || []).slice(0, topN);
 
-  const drugChartData = useMemo(() => {
-    const drugPatients = new Map<string, Set<string>>();
-    drugData.forEach(row => {
-      const y = parseInt(String(row.DATETIME_ADMIT || '').substring(0, 4), 10);
-      if (y !== drugYear) return;
-      const pid = `${row.HOSPCODE}|${row.PID}`;
-      const drugs = String(row.DNAME || '').split(',').map(d => d.trim()).filter(Boolean);
-      const seen = new Set<string>();
-      drugs.forEach(drug => {
-        if (seen.has(drug)) return;
-        seen.add(drug);
-        if (!drugPatients.has(drug)) drugPatients.set(drug, new Set());
-        drugPatients.get(drug)!.add(pid);
-      });
-    });
-    return Array.from(drugPatients.entries())
-      .map(([drug, pids]) => ({ drug, patients: pids.size }))
-      .sort((a, b) => b.patients - a.patients)
-      .slice(0, topN);
-  }, [drugData, drugYear, topN]);
+  const nsaidGroupData = nsaidByYear[String(drugYear)] || [];
+  const antibioticGroupData = antibioticByYear[String(drugYear)] || [];
 
-  const nsaidGroupData = useMemo(() => {
-    const groupPats = new Map<string, Set<string>>();
-    drugData.forEach(row => {
-      const y = parseInt(String(row.DATETIME_ADMIT || '').substring(0, 4), 10);
-      if (y !== drugYear) return;
-      const pid = `${row.HOSPCODE}|${row.PID}`;
-      const drugs = String(row.DNAME || '').split(',').map(d => d.trim()).filter(Boolean);
-      const seenGroups = new Set<string>();
-      drugs.forEach(drug => {
-        const group = classifyDrug(drug, NSAID_PATTERNS);
-        if (!group || seenGroups.has(group)) return;
-        seenGroups.add(group);
-        if (!groupPats.has(group)) groupPats.set(group, new Set());
-        groupPats.get(group)!.add(pid);
-      });
-    });
-    return Array.from(groupPats.entries())
-      .map(([group, pids]) => ({ group, patients: pids.size }))
-      .sort((a, b) => b.patients - a.patients);
-  }, [drugData, drugYear]);
+  const repeatSummaryData = repeat.summary;
+  const visitCountDist = repeat.visitCountDist;
 
-  const antibioticGroupData = useMemo(() => {
-    const groupPats = new Map<string, Set<string>>();
-    drugData.forEach(row => {
-      const y = parseInt(String(row.DATETIME_ADMIT || '').substring(0, 4), 10);
-      if (y !== drugYear) return;
-      const pid = `${row.HOSPCODE}|${row.PID}`;
-      const drugs = String(row.DNAME || '').split(',').map(d => d.trim()).filter(Boolean);
-      const seenGroups = new Set<string>();
-      drugs.forEach(drug => {
-        const group = classifyDrug(drug, ANTIBIOTIC_PATTERNS);
-        if (!group || seenGroups.has(group)) return;
-        seenGroups.add(group);
-        if (!groupPats.has(group)) groupPats.set(group, new Set());
-        groupPats.get(group)!.add(pid);
-      });
-    });
-    return Array.from(groupPats.entries())
-      .map(([group, pids]) => ({ group, patients: pids.size }))
-      .sort((a, b) => b.patients - a.patients);
-  }, [drugData, drugYear]);
+  const _mergeDrugEntries = (entryMap: Record<string, SjsDrugEntry[]>) => {
+    if (repeatYear !== null) return (entryMap[String(repeatYear)] || []).slice(0, topN);
+    const merged: Record<string, number> = {};
+    Object.values(entryMap).flat().forEach(e => { merged[e.drug] = (merged[e.drug] || 0) + e.patients; });
+    return Object.entries(merged).map(([drug, patients]) => ({ drug, patients })).sort((a, b) => b.patients - a.patients).slice(0, topN);
+  };
 
-  const totalPatients = useMemo(() => {
-    const pids = new Set<string>();
-    sjsData.forEach(d => {
-      const y = parseInt(String(d.DATETIME_ADMIT || '').substring(0, 4), 10);
-      if (SJS_YEARS.includes(y)) pids.add(`${d.HOSPCODE}|${d.PID}`);
-    });
-    return pids.size;
-  }, [sjsData]);
+  const _mergeGroupEntries = (entryMap: Record<string, SjsGroupEntry[]>) => {
+    if (repeatYear !== null) return (entryMap[String(repeatYear)] || []);
+    const merged: Record<string, number> = {};
+    Object.values(entryMap).flat().forEach(e => { merged[e.group] = (merged[e.group] || 0) + e.patients; });
+    return Object.entries(merged).map(([group, patients]) => ({ group, patients })).sort((a, b) => b.patients - a.patients);
+  };
 
-  /* ── Repeat patient (visit_count >= 2) computed data ── */
-  const repeatRows = useMemo(() => {
-    return drugVisitData.filter(r => parseInt(String(r.visit_count || '0'), 10) >= 2);
-  }, [drugVisitData]);
+  const repeatDrugChart = _mergeDrugEntries(repeat.drugByYear);
 
-  const repeatSummary = useMemo(() => {
-    const uniquePids = new Set<string>();
-    let totalVisitCount = 0;
-    repeatRows.forEach(r => {
-      const pid = `${r.HOSPCODE}|${r.PID}`;
-      uniquePids.add(pid);
-      const vc = parseInt(String(r.visit_count || '0'), 10);
-      totalVisitCount += vc;
-    });
-    const avgVisitCount = uniquePids.size > 0 ? (totalVisitCount / uniquePids.size).toFixed(1) : '0';
-    return {
-      uniquePatients: uniquePids.size,
-      totalVisits: totalVisitCount,
-      avgVisitCount,
-      rows: repeatRows.length,
-    };
-  }, [repeatRows]);
+  const repeatnsaidGroupData = _mergeGroupEntries(repeat.nsaidByYear);
+  const repeatAntibioticGroupData = _mergeGroupEntries(repeat.antibioticByYear);
 
-  const visitCountDist = useMemo(() => {
-    const bucket: Record<string, number> = {};
-    repeatRows.forEach(r => {
-      const vc = parseInt(String(r.visit_count || '0'), 10);
-      const key = vc >= 5 ? '5+' : String(vc);
-      if (!bucket[key]) bucket[key] = 0;
-      bucket[key]++;
-    });
-    const order = ['2', '3', '4', '5+'];
-    return order.filter(k => bucket[k]).map(k => ({ visit_count: k, count: bucket[k] }));
-  }, [repeatRows]);
-
-  const repeatDrugYears = useMemo(() => {
-    const years = new Set<number>();
-    repeatRows.forEach(r => {
-      const y = parseInt(String(r.DATETIME_ADMIT || '').substring(0, 4), 10);
-      if (!isNaN(y) && y > 2000 && y < 2100) years.add(y);
-    });
-    return Array.from(years).sort();
-  }, [repeatRows]);
-
-  const repeatDrugChart = useMemo(() => {
-    const drugPatients = new Map<string, Set<string>>();
-    repeatRows.forEach(r => {
-      const drugs = String(r.DNAME || '').split(',').map(d => d.trim()).filter(Boolean);
-      const seen = new Set<string>();
-      drugs.forEach(drug => {
-        if (seen.has(drug)) return;
-        seen.add(drug);
-        const pid = `${r.HOSPCODE}|${r.PID}`;
-        if (!drugPatients.has(drug)) drugPatients.set(drug, new Set());
-        drugPatients.get(drug)!.add(pid);
-      });
-    });
-    return Array.from(drugPatients.entries())
-      .map(([drug, pids]) => ({ drug, patients: pids.size }))
-      .sort((a, b) => b.patients - a.patients)
-      .slice(0, topN);
-  }, [repeatRows, topN]);
-
-  const repeatnsaidGroupData = useMemo(() => {
-    const groupPats = new Map<string, Set<string>>();
-    repeatRows.forEach(r => {
-      const pid = `${r.HOSPCODE}|${r.PID}`;
-      const drugs = String(r.DNAME || '').split(',').map(d => d.trim()).filter(Boolean);
-      const seenGroups = new Set<string>();
-      drugs.forEach(drug => {
-        const group = classifyDrug(drug, NSAID_PATTERNS);
-        if (!group || seenGroups.has(group)) return;
-        seenGroups.add(group);
-        if (!groupPats.has(group)) groupPats.set(group, new Set());
-        groupPats.get(group)!.add(pid);
-      });
-    });
-    return Array.from(groupPats.entries())
-      .map(([group, pids]) => ({ group, patients: pids.size }))
-      .sort((a, b) => b.patients - a.patients);
-  }, [repeatRows]);
-
-  const repeatAntibioticGroupData = useMemo(() => {
-    const groupPats = new Map<string, Set<string>>();
-    repeatRows.forEach(r => {
-      const pid = `${r.HOSPCODE}|${r.PID}`;
-      const drugs = String(r.DNAME || '').split(',').map(d => d.trim()).filter(Boolean);
-      const seenGroups = new Set<string>();
-      drugs.forEach(drug => {
-        const group = classifyDrug(drug, ANTIBIOTIC_PATTERNS);
-        if (!group || seenGroups.has(group)) return;
-        seenGroups.add(group);
-        if (!groupPats.has(group)) groupPats.set(group, new Set());
-        groupPats.get(group)!.add(pid);
-      });
-    });
-    return Array.from(groupPats.entries())
-      .map(([group, pids]) => ({ group, patients: pids.size }))
-      .sort((a, b) => b.patients - a.patients);
-  }, [repeatRows]);
-
-  const repeatYoYTrend = useMemo(() => {
-    const yearMap = new Map<number, Set<string>>();
-    repeatRows.forEach(r => {
-      const y = parseInt(String(r.DATETIME_ADMIT || '').substring(0, 4), 10);
-      if (isNaN(y) || y < 2010 || y > 2030) return;
-      if (!yearMap.has(y)) yearMap.set(y, new Set());
-      yearMap.get(y)!.add(`${r.HOSPCODE}|${r.PID}`);
-    });
-    const minYear = yearMap.size > 0 ? Math.min(...yearMap.keys()) : 2014;
-    const maxYear = yearMap.size > 0 ? Math.max(...yearMap.keys()) : 2024;
-    const years: Array<{ year: string; patients: number; rows: number }> = [];
-    const yearRowMap = new Map<number, number>();
-    repeatRows.forEach(r => {
-      const y = parseInt(String(r.DATETIME_ADMIT || '').substring(0, 4), 10);
-      if (!isNaN(y) && y >= 2010 && y <= 2030) {
-        yearRowMap.set(y, (yearRowMap.get(y) || 0) + 1);
-      }
-    });
-    for (let y = minYear; y <= maxYear; y++) {
-      years.push({
-        year: String(y),
-        patients: yearMap.get(y)?.size || 0,
-        rows: yearRowMap.get(y) || 0,
-      });
-    }
-    return years;
-  }, [repeatRows]);
-
-  const repeatVisitGapStats = useMemo(() => {
-    const gaps: number[] = [];
-    repeatRows.forEach(r => {
-      const dateServ = String(r.DATE_SERV || '').split(',').map(d => d.trim()).filter(Boolean);
-      if (dateServ.length < 2) return;
-      const dates = dateServ.map(d => new Date(d).getTime()).filter(t => !isNaN(t)).sort();
-      if (dates.length < 2) return;
-      const gapMs = dates[dates.length - 1] - dates[0];
-      const gapDays = Math.round(gapMs / (1000 * 60 * 60 * 24));
-      if (gapDays > 0) gaps.push(gapDays);
-    });
-    if (gaps.length === 0) return { median: 0, avg: 0, count: 0, p25: 0, p75: 0 };
-    gaps.sort((a, b) => a - b);
-    const median = gaps[Math.floor(gaps.length / 2)];
-    const avg = Math.round(gaps.reduce((s, v) => s + v, 0) / gaps.length);
-    const p25 = gaps[Math.floor(gaps.length * 0.25)];
-    const p75 = gaps[Math.floor(gaps.length * 0.75)];
-    return { median, avg, count: gaps.length, p25, p75 };
-  }, [repeatRows]);
+  const repeatYoYTrend = repeat.yoYTrend;
+  const repeatVisitGapStats = repeat.visitGapStats;
 
   if (loading) return <div className="loading">Loading SJS/TEN data…</div>;
 
@@ -845,7 +517,7 @@ function SjsTenDashboard() {
 
         <div className="card chart-card">
           <ResponsiveContainer width="100%" height={460}>
-            <LineChart data={lineData} margin={{ top: 10, right: 30, left: 20, bottom: 5 }}>
+            <LineChart data={lineDataArr} margin={{ top: 10, right: 30, left: 20, bottom: 5 }}>
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis dataKey="year" tick={{ fontSize: 11 }} />
               <YAxis tick={{ fontSize: 11 }} />
@@ -972,16 +644,46 @@ function SjsTenDashboard() {
       <div className="comparison-row">
         <h3 className="section-title">Repeat Patients Analysis (visit_count ≥ 2)</h3>
 
+        <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '12px', padding: '10px 14px', background: '#f8f9fa', borderRadius: '8px', flexWrap: 'wrap' }}>
+          <div>
+            <label style={{ fontWeight: 600, fontSize: '14px', marginRight: 8 }}>Year:</label>
+            <select
+              value={repeatYear ?? ''}
+              onChange={e => setRepeatYear(e.target.value ? parseInt(e.target.value) : null)}
+              style={{ fontSize: '14px', padding: '4px 10px', borderRadius: '6px', border: '1px solid #d1d5db', cursor: 'pointer' }}
+            >
+              <option value="">All Years</option>
+              {repeat.drugYears.map(y => <option key={y} value={y}>{y}</option>)}
+            </select>
+          </div>
+          <div>
+            <label style={{ fontWeight: 600, fontSize: '14px', marginRight: 8 }}>Show Top:</label>
+            <select
+              value={topN}
+              onChange={e => setTopN(parseInt(e.target.value))}
+              style={{ fontSize: '14px', padding: '4px 10px', borderRadius: '6px', border: '1px solid #d1d5db', cursor: 'pointer' }}
+            >
+              {[10, 15, 20, 30, 50].map(n => <option key={n} value={n}>{n} drugs</option>)}
+            </select>
+          </div>
+          <span style={{ fontSize: '12px', color: '#6b7280' }}>
+            Filter repeat patient drug charts by admit year
+          </span>
+        </div>
+
         <div className="card" style={{ marginBottom: '2rem', background: 'linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 100%)', borderLeft: '5px solid #10b981' }}>
           <h2 style={{ margin: '0 0 0.75rem 0', color: '#065f46', fontSize: '1.15rem', fontWeight: 700 }}>
             Repeat Patients — Summary (from sjs-ten-ipd-drug-visit.csv)
           </h2>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem' }}>
             {([
-              { label: 'Total Rows (vc≥2)', value: repeatSummary.rows.toLocaleString(), color: '#f59e0b' },
-              { label: 'Unique Patients', value: repeatSummary.uniquePatients.toLocaleString(), color: '#3b82f6' },
-              { label: 'Total Visits', value: repeatSummary.totalVisits.toLocaleString(), color: '#f97316' },
-              { label: 'Avg visit_count', value: repeatSummary.avgVisitCount, color: '#8b5cf6' },
+              { label: 'Total Rows (vc≥2)', value: repeatSummaryData.rows.toLocaleString(), color: '#f59e0b' },
+
+              { label: 'Unique Patients', value: repeatSummaryData.uniquePatients.toLocaleString(), color: '#3b82f6' },
+
+              { label: 'Total Visits', value: repeatSummaryData.totalVisits.toLocaleString(), color: '#f97316' },
+
+              { label: 'Avg visit_count', value: repeatSummaryData.avgVisitCount, color: '#8b5cf6' },
             ] as { label: string; value: string; color: string }[]).map(item => (
               <div key={item.label} style={{ padding: '0.75rem 1rem', background: 'rgba(255,255,255,0.8)', borderRadius: '8px', borderTop: `3px solid ${item.color}` }}>
                 <div style={{ fontSize: '1.5rem', fontWeight: 800, color: item.color }}>{item.value}</div>
