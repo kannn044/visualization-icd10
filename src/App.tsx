@@ -342,7 +342,7 @@ function SjsTenDashboard() {
   useEffect(() => {
     if (sjsDataLoaded) return;
     setSjsDataLoaded(true);
-    fetch('./sjs-ten-aggregated.json')
+    fetch(import.meta.env.BASE_URL + 'sjs-ten-aggregated.json')
       .then(r => r.json())
       .then(data => {
         setAggregatedData(data);
