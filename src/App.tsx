@@ -1,10 +1,29 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import Papa from 'papaparse';
 import { geoMercator, geoPath } from 'd3-geo';
-import { 
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, 
+import {
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   Cell, LabelList, PieChart, Pie, Legend, LineChart, Line
 } from 'recharts';
+
+// Resolve a public asset path against the app's deploy base (e.g. "/dashboard/").
+// This is robust whether the page is served with or without a trailing slash.
+const asset = (file: string) => import.meta.env.BASE_URL + file.replace(/^\.?\//, '');
+
+// Fetch helper that fails loudly (and clearly) instead of trying to JSON-parse an
+// HTML error page, which produces the cryptic: Unexpected token '<', "<!DOCTYPE "...
+async function fetchData(file: string): Promise<Response> {
+  const url = asset(file);
+  const res = await fetch(url);
+  if (!res.ok) {
+    throw new Error(`Failed to load ${url} (HTTP ${res.status}). Is the file deployed on the server?`);
+  }
+  const ctype = res.headers.get('content-type') || '';
+  if (ctype.includes('text/html')) {
+    throw new Error(`Expected data at ${url} but the server returned an HTML page. The data file is likely missing from the deployment.`);
+  }
+  return res;
+}
 
 interface EpisodeData {
   id: string;
@@ -338,20 +357,27 @@ function SjsTenDashboard() {
   const [repeatYear, setRepeatYear] = useState<number | null>(null);
 
   const [sjsDataLoaded, setSjsDataLoaded] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (sjsDataLoaded) return;
     setSjsDataLoaded(true);
-    fetch(import.meta.env.BASE_URL + 'sjs-ten-aggregated.json')
+    fetchData('sjs-ten-aggregated.json')
       .then(r => r.json())
       .then(data => {
         setAggregatedData(data);
         if (data.drugYears.length > 0) setDrugYear(data.drugYears[Math.floor(data.drugYears.length / 2)]);
         if (data.repeat.drugYears.length > 0) setRepeatYear(data.repeat.drugYears[Math.floor(data.repeat.drugYears.length / 2)]);
       })
+      .catch(err => {
+        console.error('SJS/TEN data load failed:', err);
+        setError(err.message || String(err));
+      })
       .finally(() => setLoading(false));
   }, [sjsDataLoaded]);
 
+  if (error) return <div className="loading" style={{ color: '#b91c1c', padding: '2rem', textAlign: 'center' }}>⚠️ Could not load SJS/TEN data.<br /><span style={{ fontSize: '0.85rem', color: '#6b7280' }}>{error}</span></div>;
+  if (loading) return <div className="loading" style={{ padding: '2rem', textAlign: 'center' }}>Loading SJS/TEN data…</div>;
   if (!aggregatedData) return null;
   const { summary, barData, lineData, drugYears, drugByYear, nsaidByYear, antibioticByYear, repeat } = aggregatedData;
 
@@ -404,8 +430,6 @@ function SjsTenDashboard() {
 
   const repeatYoYTrend = repeat.yoYTrend;
   const repeatVisitGapStats = repeat.visitGapStats;
-
-  if (loading) return <div className="loading">Loading SJS/TEN data…</div>;
 
   return (
     <div className="dashboard-container">
@@ -863,11 +887,11 @@ export default function App() {
     if (ntmLoadingDone) return;
     setNtmLoadingDone(true);
     const fetchCSV = async () => {
-      const addressRes = await fetch('./address-map.json');
+      const addressRes = await fetchData('address-map.json');
       const addressMapData = await addressRes.json();
       const addressMap = new Map<string, string>(Object.entries(addressMapData));
 
-      const episodeRes = await fetch('./episode_details_10mar2026.csv');
+      const episodeRes = await fetchData('episode_details_10mar2026.csv');
       const episodeText = await episodeRes.text();
       const episodeResult = Papa.parse(episodeText, { header: true, dynamicTyping: true, skipEmptyLines: true });
 
@@ -891,7 +915,7 @@ export default function App() {
       const popEntries = await Promise.all(
         ALL_YEARS.map(async (year) => {
           const thaiYear = year + 543;
-          const popRes = await fetch(`./pop${thaiYear}.csv`);
+          const popRes = await fetchData(`pop${thaiYear}.csv`);
           const popText = await popRes.text();
           const parsed = Papa.parse(popText, { header: false, dynamicTyping: false, skipEmptyLines: false });
           const rows = parsed.data as string[][];
@@ -954,7 +978,10 @@ export default function App() {
       setLoading(false);
     };
 
-    fetchCSV();
+    fetchCSV().catch(err => {
+      console.error('ICD-10 data load failed:', err);
+      setLoading(false);
+    });
   }, [ntmLoadingDone]);
 
   const getProcessedData = (criteria: 'union' | 'inter') => {

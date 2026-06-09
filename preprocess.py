@@ -22,6 +22,10 @@ csv.field_size_limit(10**8)
 
 ROOT = Path(__file__).parent
 PUBLIC = ROOT / "public"
+# Large source CSVs and bulky intermediates live here (NOT shipped to the browser
+# or the deployment). Only the small JSON outputs the app fetches stay in public/.
+RAW = ROOT / "raw-data"
+RAW.mkdir(exist_ok=True)
 
 # ─── Drug group classifiers (ported from App.tsx) ─────────────────────────────
 
@@ -142,8 +146,8 @@ def strip_thin_csv(input_path, output_path, keep_cols, description) -> int:
 
 
 def thin_drug_visit() -> None:
-    src = PUBLIC / "sjs-ten-ipd-drug-visit.csv"
-    dst = PUBLIC / "sjs-ten-ipd-drug-visit-thin.csv"
+    src = RAW / "sjs-ten-ipd-drug-visit.csv"
+    dst = RAW / "sjs-ten-ipd-drug-visit-thin.csv"
     keep = ["HOSPCODE", "PID", "DIAGCODE", "DATETIME_ADMIT", "DNAME", "DATE_SERV", "visit_count"]
     orig = os.path.getsize(src)
     thinned = strip_thin_csv(src, dst, keep, "sjs-ten-ipd-drug-visit")
@@ -151,8 +155,8 @@ def thin_drug_visit() -> None:
 
 
 def thin_drug() -> None:
-    src = PUBLIC / "sjs-ten-ipd-drug.csv"
-    dst = PUBLIC / "sjs-ten-ipd-drug-thin.csv"
+    src = RAW / "sjs-ten-ipd-drug.csv"
+    dst = RAW / "sjs-ten-ipd-drug-thin.csv"
     keep = ["HOSPCODE", "PID", "DIAGCODE", "DATETIME_ADMIT", "DNAME"]
     orig = os.path.getsize(src)
     thinned = strip_thin_csv(src, dst, keep, "sjs-ten-ipd-drug")
@@ -160,8 +164,8 @@ def thin_drug() -> None:
 
 
 def thin_hospitals() -> None:
-    src = PUBLIC / "hospitals.csv"
-    dst_json = PUBLIC / "hosp-zones.json"
+    src = RAW / "hospitals.csv"
+    dst_json = RAW / "hosp-zones.json"
     orig = os.path.getsize(src)
     with open(src, newline="", encoding="utf-8-sig") as f:
         reader = csv.DictReader(f)
@@ -180,7 +184,7 @@ def thin_hospitals() -> None:
 
 
 def thin_address() -> None:
-    src = PUBLIC / "address.csv"
+    src = RAW / "address.csv"
     dst_json = PUBLIC / "address-map.json"
     orig = os.path.getsize(src)
     with open(src, newline="", encoding="utf-8-sig") as f:
@@ -266,9 +270,9 @@ def _parse_dates(date_serv: str) -> list:
 
 def aggregate_sjs_ten(zone_map: dict[str, str]) -> dict:
     """Compute all SJS/TEN chart data and return as a single dict."""
-    ipd_path = PUBLIC / "sjs-ten-ipd.csv"
-    drug_path = PUBLIC / "sjs-ten-ipd-drug-thin.csv"
-    drug_visit_path = PUBLIC / "sjs-ten-ipd-drug-visit-thin.csv"
+    ipd_path = RAW / "sjs-ten-ipd.csv"
+    drug_path = RAW / "sjs-ten-ipd-drug-thin.csv"
+    drug_visit_path = RAW / "sjs-ten-ipd-drug-visit-thin.csv"
 
     print("  Reading sjs-ten-ipd.csv ...")
     ipd_rows = _read_csv_rows(ipd_path)
@@ -517,7 +521,7 @@ def main():
     thin_address()
     print()
     print("[5/5] Computing SJS/TEN aggregated JSON ...")
-    with open(PUBLIC / "hosp-zones.json", "r") as f:
+    with open(RAW / "hosp-zones.json", "r") as f:
         zone_map = json.load(f)
     aggregate_sjs_ten(zone_map)
     print()
