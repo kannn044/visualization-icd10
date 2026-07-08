@@ -35,6 +35,7 @@ interface EpisodeData {
   gender: string;
   zone_code: string;
   changwat: string;
+  patient_type: string;
   most_diagcode: string;
   first_diagcode: string;
   province_name?: string;
@@ -186,9 +187,9 @@ function VennSVG({ v, diagCode, diagType }: { v: VennRegions; diagCode: string; 
   const pct = (n: number) => v.total > 0 ? `${((n / v.total) * 100).toFixed(1)}%` : '—';
   const infoLines = [
     { label: 'Total patients',           val: v.total,       pct: null },
-    { label: 'Episode ≥ 1',              val: v.ep1Size,     pct: pct(v.ep1Size) },
-    { label: 'Episode ≥ 2',              val: v.ep2Size,     pct: pct(v.ep2Size) },
-    { label: 'Episode ≥ 1 & Drug=True',  val: v.ep1DrugSize, pct: pct(v.ep1DrugSize) },
+    { label: 'Visit ≥ 1',              val: v.ep1Size,     pct: pct(v.ep1Size) },
+    { label: 'Visit ≥ 2',              val: v.ep2Size,     pct: pct(v.ep2Size) },
+    { label: 'Visit ≥ 1 & Drug=True',  val: v.ep1DrugSize, pct: pct(v.ep1DrugSize) },
     { label: 'All three',                val: v.all3,        pct: pct(v.all3) },
   ];
 
@@ -200,24 +201,27 @@ function VennSVG({ v, diagCode, diagType }: { v: VennRegions; diagCode: string; 
       </h5>
 
       <svg viewBox="0 0 500 490" style={{ width: '100%', maxWidth: 440 }}>
-        {/* Circles */}
-        <circle cx={170} cy={190} r={130} fill={BLUE}  fillOpacity={0.35} stroke="white" strokeWidth={2} />
-        <circle cx={330} cy={190} r={130} fill={GREEN} fillOpacity={0.35} stroke="white" strokeWidth={2} />
-        <circle cx={250} cy={310} r={130} fill={RED}   fillOpacity={0.35} stroke="white" strokeWidth={2} />
+        {/*
+          Nested layout: Visit ≥ 2 and Visit ≥ 1 & Drug=True are always subsets of
+          Visit ≥ 1 (every episode has at least 1 visit), so both inner circles are
+          drawn inside the outer one. Regions only2/only3/only23 are 0 by construction.
+        */}
+        {/* Outer circle: Visit ≥ 1 (= all patients in subset) */}
+        <circle cx={250} cy={240} r={200} fill={BLUE}  fillOpacity={0.25} stroke="white" strokeWidth={2} />
+        {/* Inner circles: Visit ≥ 2 and Visit ≥ 1 & Drug=True */}
+        <circle cx={185} cy={285} r={110} fill={GREEN} fillOpacity={0.4} stroke="white" strokeWidth={2} />
+        <circle cx={315} cy={285} r={110} fill={RED}   fillOpacity={0.4} stroke="white" strokeWidth={2} />
 
         {/* Region counts */}
-        {lbl(90,  175, v.only1)}   {/* only A */}
-        {lbl(410, 175, v.only2)}   {/* only B */}
-        {lbl(250, 415, v.only3)}   {/* only C */}
-        {lbl(250, 148, v.only12)}  {/* A∩B ¬C */}
-        {lbl(163, 310, v.only13)}  {/* A∩C ¬B */}
-        {lbl(337, 310, v.only23)}  {/* B∩C ¬A */}
-        {lbl(250, 247, v.all3)}    {/* all three */}
+        {lbl(250, 110, v.only1)}   {/* Visit ≥ 1 only */}
+        {lbl(135, 285, v.only12)}  {/* Visit ≥ 2 only (¬Drug) */}
+        {lbl(365, 285, v.only13)}  {/* Drug only (¬Visit ≥ 2) */}
+        {lbl(250, 285, v.all3)}    {/* Visit ≥ 2 ∩ Drug */}
 
         {/* Set labels */}
-        <text x={65}  y={52} textAnchor="middle" fontSize={13} fontWeight="bold" fill={BLUE} >Episode ≥ 1</text>
-        <text x={435} y={52} textAnchor="middle" fontSize={13} fontWeight="bold" fill={GREEN}>Episode ≥ 2</text>
-        <text x={250} y={460} textAnchor="middle" fontSize={12} fontWeight="bold" fill={RED}  >Episode ≥ 1 &amp; Drug=True</text>
+        <text x={250} y={62}  textAnchor="middle" fontSize={13} fontWeight="bold" fill={BLUE} >Visit ≥ 1</text>
+        <text x={130} y={455} textAnchor="middle" fontSize={13} fontWeight="bold" fill={GREEN}>Visit ≥ 2</text>
+        <text x={370} y={455} textAnchor="middle" fontSize={12} fontWeight="bold" fill={RED}  >Visit ≥ 1 &amp; Drug=True</text>
       </svg>
 
       {/* Stats table */}
@@ -860,6 +864,7 @@ export default function App() {
   const [diagFilter, setDiagFilter] = useState('All');
   const [genderFilter, setGenderFilter] = useState({ all: true, male: false, female: false });
   const [zoneFilter, setZoneFilter] = useState('All');
+  const [patientTypeFilter, setPatientTypeFilter] = useState('All');
   const [selectedRateYear, setSelectedRateYear] = useState<number>(2024);
   const [populationData, setPopulationData] = useState<PopulationData>({});
   const [provincePopData, setProvincePopData] = useState<ProvinceTotalPop>({});
@@ -867,6 +872,7 @@ export default function App() {
   const [selectedZoneBarZone, setSelectedZoneBarZone] = useState('All');
   const [lineChartPattern, setLineChartPattern] = useState<'union' | 'inter'>('union');
   const [thailandGeo, setThailandGeo] = useState<any>(null);
+  const [geoError, setGeoError] = useState<string | null>(null);
   const [ntmLoadingDone, setNtmLoadingDone] = useState(false);
 
   const handleGenderToggle = (type: 'all' | 'male' | 'female') => {
@@ -891,7 +897,7 @@ export default function App() {
       const addressMapData = await addressRes.json();
       const addressMap = new Map<string, string>(Object.entries(addressMapData));
 
-      const episodeRes = await fetchData('episode_details_10mar2026.csv');
+      const episodeRes = await fetchData('episode_enriched_clean_full.csv');
       const episodeText = await episodeRes.text();
       const episodeResult = Papa.parse(episodeText, { header: true, dynamicTyping: true, skipEmptyLines: true });
 
@@ -968,12 +974,39 @@ export default function App() {
       setPopulationByGender(genderPopMap);
 
       try {
-        const geoRes = await fetch('https://raw.githubusercontent.com/apisit/thailand.json/master/thailand.json');
-        if (geoRes.ok) {
-          const geoJson = await geoRes.json();
-          setThailandGeo(geoJson);
+        // 1) Prefer a locally deployed copy (public/thailand.json) — no external dependency
+        let geoJson: any = null;
+        try {
+          const localRes = await fetchData('thailand.json');
+          geoJson = await localRes.json();
+        } catch {
+          // 2) Fall back to CDN mirrors (jsDelivr first — GitHub raw rate-limits heavily)
+          const mirrors = [
+            'https://cdn.jsdelivr.net/gh/apisit/thailand.json@master/thailand.json',
+            'https://raw.githubusercontent.com/apisit/thailand.json/master/thailand.json',
+          ];
+          let lastErr = '';
+          for (const url of mirrors) {
+            try {
+              const geoRes = await fetch(url);
+              if (!geoRes.ok) { lastErr = `HTTP ${geoRes.status} from ${new URL(url).host}`; continue; }
+              geoJson = await geoRes.json();
+              break;
+            } catch (e: any) {
+              lastErr = `${new URL(url).host}: ${e?.message || e}`;
+            }
+          }
+          if (!geoJson) throw new Error(lastErr || 'all mirrors failed');
         }
-      } catch { /* map optional */ }
+        if (geoJson?.features?.length) {
+          setThailandGeo(geoJson);
+        } else {
+          throw new Error('GeoJSON has no features');
+        }
+      } catch (err: any) {
+        console.error('Thailand map data load failed:', err);
+        setGeoError(String(err?.message || err));
+      }
 
       setLoading(false);
     };
@@ -987,7 +1020,7 @@ export default function App() {
   const getProcessedData = (criteria: 'union' | 'inter') => {
     if (rawData.length === 0) return [];
     const hasDrugTrue = (d: EpisodeData) => String(d.have_in_drug_list).includes('True');
-    const s2Set = new Set(rawData.filter(d => d.episode >= 2).map(d => d.id));
+    const s2Set = new Set(rawData.filter(d => d.visit_count >= 2).map(d => d.id));
     const s3Set = new Set(rawData.filter(d => d.episode >= 1 && hasDrugTrue(d)).map(d => d.id));
     
     let targetIds: Set<string>;
@@ -1005,12 +1038,13 @@ export default function App() {
       else if (!genderFilter.male && !genderFilter.female) dff = [];
     }
     if (zoneFilter !== 'All') dff = dff.filter(d => String(d.zone_code) === String(zoneFilter));
-    
+    if (patientTypeFilter !== 'All') dff = dff.filter(d => String(d.patient_type) === patientTypeFilter);
+
     return dff;
   };
 
-  const unionData = useMemo(() => getProcessedData('union'), [rawData, diagFilter, viewType, genderFilter, zoneFilter]);
-  const interData = useMemo(() => getProcessedData('inter'), [rawData, diagFilter, viewType, genderFilter, zoneFilter]);
+  const unionData = useMemo(() => getProcessedData('union'), [rawData, diagFilter, viewType, genderFilter, zoneFilter, patientTypeFilter]);
+  const interData = useMemo(() => getProcessedData('inter'), [rawData, diagFilter, viewType, genderFilter, zoneFilter, patientTypeFilter]);
 
   const getStats = (data: EpisodeData[]) => {
     const seen = new Set<string>();
@@ -1192,14 +1226,17 @@ export default function App() {
 
   const VENN_CODES = ['A310', 'A311', 'A318', 'A319'] as const;
   const vennData = useMemo(() => {
+    const base = patientTypeFilter !== 'All'
+      ? rawData.filter(d => String(d.patient_type) === patientTypeFilter)
+      : rawData;
     const first: Record<string, VennRegions | null> = {};
     const most: Record<string, VennRegions | null> = {};
     VENN_CODES.forEach(code => {
-      first[code] = computeVennRegions(rawData.filter(d => d.first_diagcode === code));
-      most[code]  = computeVennRegions(rawData.filter(d => d.most_diagcode  === code));
+      first[code] = computeVennRegions(base.filter(d => d.first_diagcode === code));
+      most[code]  = computeVennRegions(base.filter(d => d.most_diagcode  === code));
     });
     return { first, most };
-  }, [rawData]);
+  }, [rawData, patientTypeFilter]);
 
   const RenderComparison = ({ title, dataUnion, dataInter, layout = 'horizontal' as 'horizontal' | 'vertical' }: any) => (
     <div className="comparison-row">
@@ -1414,6 +1451,14 @@ export default function App() {
             <select value={zoneFilter} onChange={e => setZoneFilter(e.target.value)}>
               <option>All</option>
               {Array.from({length: 13}, (_, i) => i + 1).map(z => <option key={String(z)} value={z}>{z}</option>)}
+            </select>
+          </div>
+          <div className="filter-item">
+            <label>Patient Type</label>
+            <select value={patientTypeFilter} onChange={e => setPatientTypeFilter(e.target.value)}>
+              <option>All</option>
+              <option>OPD</option>
+              <option>IPD</option>
             </select>
           </div>
         </div>
@@ -1634,8 +1679,13 @@ export default function App() {
           >
             {ALL_YEARS.map(y => <option key={y} value={y}>{y}</option>)}
           </select>
-          {!thailandGeo && (
+          {!thailandGeo && !geoError && (
             <span style={{ color: '#9ca3af', fontSize: '12px', marginLeft: '8px' }}>Loading map data…</span>
+          )}
+          {geoError && (
+            <span style={{ color: '#dc2626', fontSize: '12px', marginLeft: '8px' }}>
+              Map data failed to load: {geoError} — place thailand.json in public/ or check network access to raw.githubusercontent.com
+            </span>
           )}
         </div>
         {thailandGeo ? (
@@ -1655,7 +1705,9 @@ export default function App() {
           <div className="comparison-grid">
             {[0, 1].map(i => (
               <div key={i} className="card chart-card" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 300 }}>
-                <p style={{ color: '#9ca3af' }}>Loading Thailand map data…</p>
+                <p style={{ color: geoError ? '#dc2626' : '#9ca3af', textAlign: 'center', padding: '0 1rem' }}>
+                  {geoError ? `Thailand map unavailable: ${geoError}` : 'Loading Thailand map data…'}
+                </p>
               </div>
             ))}
           </div>
